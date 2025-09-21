@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X } from 'lucide-react';
+import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -31,6 +31,9 @@ const Hareketler = () => {
   const [editMovementQuantity, setEditMovementQuantity] = useState(1);
   const [editMovementLocation, setEditMovementLocation] = useState('');
   const [editMovementDescription, setEditMovementDescription] = useState('');
+  const [deleteModalMovement, setDeleteModalMovement] = useState<any>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Fetch locations and users from Supabase
   useEffect(() => {
@@ -244,18 +247,45 @@ const Hareketler = () => {
     }
   };
 
+  // Tek hareket silme fonksiyonu
+  const handleDelete = (movement: any) => {
+    setDeleteModalMovement(movement);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModalMovement) return;
+    setIsDeleting(true);
+    try {
+      await removeHareket(deleteModalMovement.id);
+      setShowDeleteModal(false);
+      setDeleteModalMovement(null);
+    } catch (error) {
+      alert('Hareket silinirken bir hata oluştu!');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Toplu silme işlemi
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (!selectedMovements.length) return;
-    
-    if (window.confirm('Seçili hareketleri silmek istediğinizden emin misiniz?')) {
-      try {
-        await removeHareketler(selectedMovements);
-        setSelectedMovements([]);
-        alert('Seçili hareketler başarıyla silindi!');
-      } catch (error) {
-        alert('Hareketler silinirken bir hata oluştu!');
-      }
+    setDeleteModalMovement({ id: 'bulk', count: selectedMovements.length });
+    setShowDeleteModal(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (!deleteModalMovement || deleteModalMovement.id !== 'bulk') return;
+    setIsDeleting(true);
+    try {
+      await removeHareketler(selectedMovements);
+      setSelectedMovements([]);
+      setShowDeleteModal(false);
+      setDeleteModalMovement(null);
+    } catch (error) {
+      alert('Hareketler silinirken bir hata oluştu!');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -474,11 +504,7 @@ const Hareketler = () => {
                         Düzenle
                       </button>
                       <button
-                        onClick={() => {
-                          if (window.confirm('Bu hareketi silmek istediğinizden emin misiniz?')) {
-                            removeHareket(hareket.id);
-                          }
-                        }}
+                        onClick={() => handleDelete(hareket)}
                         className="text-red-600 hover:text-red-900"
                       >
                         Sil
@@ -624,66 +650,164 @@ const Hareketler = () => {
 
       {/* Düzenleme Modalı */}
       {showEditModal && editingMovement && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Hareket Düzenle</h3>
-              <div className="space-y-4">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800">Hareket Düzenle</h2>
+              <button
+                onClick={closeEditModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Ürün Bilgisi */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <RefreshCw className="h-5 w-5 text-indigo-600" />
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-gray-900">{getUrunAdi(editingMovement.urunId)}</h3>
+                  <p className="text-sm text-gray-500">
+                    {editingMovement.tip} • {editingMovement.miktar} adet
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleEditMovement(); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Hareket Tipi</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Hareket Tipi*
+                  </label>
                   <select
                     value={editMovementType}
                     onChange={(e) => setEditMovementType(e.target.value as 'Giriş' | 'Çıkış')}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
                   >
                     <option value="Giriş">Giriş</option>
                     <option value="Çıkış">Çıkış</option>
                   </select>
                 </div>
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Miktar</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Miktar*
+                  </label>
                   <input
                     type="number"
+                    min="1"
                     value={editMovementQuantity}
                     onChange={(e) => setEditMovementQuantity(Number(e.target.value))}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Lokasyon</label>
-                  <select
-                    value={editMovementLocation}
-                    onChange={(e) => setEditMovementLocation(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                  >
-                    <option value="">Seçiniz</option>
-                    {locations.map(loc => (
-                      <option key={loc.id} value={loc.id}>{loc.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Açıklama</label>
-                  <textarea
-                    value={editMovementDescription}
-                    onChange={(e) => setEditMovementDescription(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
                   />
                 </div>
               </div>
-              <div className="mt-5 flex justify-end space-x-3">
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Lokasyon*
+                </label>
+                <select
+                  value={editMovementLocation}
+                  onChange={(e) => setEditMovementLocation(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
+                >
+                  <option value="">Lokasyon Seçin</option>
+                  {locations.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Açıklama
+                </label>
+                <textarea
+                  value={editMovementDescription}
+                  onChange={(e) => setEditMovementDescription(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
+                  rows={3}
+                  placeholder="Hareket hakkında açıklama yazın..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
+                  type="button"
                   onClick={closeEditModal}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors duration-200"
                 >
                   İptal
                 </button>
                 <button
-                  onClick={handleEditMovement}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200 flex items-center"
                 >
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Kaydet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Silme Onay Modal */}
+      {showDeleteModal && deleteModalMovement && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 mx-auto flex items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+            </div>
+            
+            <div className="text-center">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {deleteModalMovement.id === 'bulk' 
+                  ? 'Seçili Hareketleri Sil' 
+                  : 'Hareketi Sil'
+                }
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                {deleteModalMovement.id === 'bulk' 
+                  ? `${deleteModalMovement.count} hareketi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+                  : `"${getUrunAdi(deleteModalMovement.urunId)}" ürününün hareketini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+                }
+              </p>
+              
+              <div className="flex justify-center space-x-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setDeleteModalMovement(null);
+                  }}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={deleteModalMovement.id === 'bulk' ? confirmBulkDelete : confirmDelete}
+                  disabled={isDeleting}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                >
+                  {isDeleting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Siliniyor...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Sil
+                    </>
+                  )}
                 </button>
               </div>
             </div>
