@@ -188,7 +188,7 @@ const Anasayfa = () => {
           )}
           <div className="mt-6 text-right">
             <Link
-              to="/hareketler"
+              to="/app/hareketler"
               className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium group"
             >
               Tüm hareketleri görüntüle
@@ -209,21 +209,21 @@ const Anasayfa = () => {
                 title: 'Malzeme Listesi',
                 description: 'Tüm malzemeleri görüntüle ve yönet',
                 icon: <Package className="h-5 w-5 text-blue-600" />,
-                link: '/depo',
+                link: '/app/depo',
                 bgColor: 'bg-blue-100'
               },
               {
                 title: 'Hareket Kayıtları',
                 description: 'Giriş ve çıkışları takip et',
                 icon: <RefreshCw className="h-5 w-5 text-green-600" />,
-                link: '/hareketler',
+                link: '/app/hareketler',
                 bgColor: 'bg-green-100'
               },
               {
                 title: 'Raporlar',
                 description: 'Detaylı analiz ve raporlar',
                 icon: <BarChart3 className="h-5 w-5 text-purple-600" />,
-                link: '/raporlar',
+                link: '/app/raporlar',
                 bgColor: 'bg-purple-100'
               }
             ].map((item, index) => (

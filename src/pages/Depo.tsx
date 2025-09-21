@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Package, Search, ArrowDown, ArrowUp, Plus, Download, Trash2, CheckSquare, Square, Scan, Volume2, Sun, Monitor, Laptop, Plug, Box, Printer } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
@@ -19,34 +19,13 @@ const Depo = () => {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [sortBy, setSortBy] = useState('ad');
   const [sortDir, setSortDir] = useState('asc');
-  const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showScanner, setShowScanner] = useState(false);
   const [currentPage] = useState(1);
   const [barcodeModalProduct, setBarcodeModalProduct] = useState<string | null>(null);
   const [showBulkBarcodeModal, setShowBulkBarcodeModal] = useState(false);
 
-  useEffect(() => {
-    const fetchLocations = async () => {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('id, name')
-        .order('name');
-      
-      if (error) {
-        console.error('Error fetching locations:', error);
-      } else if (data) {
-        setLocations(data);
-      }
-    };
 
-    fetchLocations();
-  }, []);
-
-  const getLocationName = (locationId: string) => {
-    const location = locations.find(loc => loc.id === locationId);
-    return location ? location.name : 'Unknown';
-  };
 
   const depodakiUrunler = urunler.filter(urun => urun.durum === 'Depoda');
 
@@ -106,10 +85,9 @@ const Depo = () => {
         'Model': urun.model,
         'Kategori': getKategoriAdi(urun.kategori),
         'Durum': urun.durum,
-        'Lokasyon': getLocationName(urun.lokasyon),
         'Seri No': urun.seriNo,
         'Barkod': urun.barkod,
-        'Son İşlem': urun.eklemeTarihi
+        'Son İşlem': formatDateTimeForExcel(urun.eklemeTarihi)
       })),
       'Secili_Depo_Urunleri'
     );
@@ -157,6 +135,17 @@ const Depo = () => {
     const hour = String(date.getHours()).padStart(2, '0');
     const minute = String(date.getMinutes()).padStart(2, '0');
     return `${day}.${month}.${year} ${hour}:${minute}`;
+  };
+
+  const formatDateTimeForExcel = (isoString: string) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hour = String(date.getHours()).padStart(2, '0');
+    const minute = String(date.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hour}:${minute}`;
   };
 
   // Kategoriye göre ikon döndüren fonksiyon
@@ -450,7 +439,7 @@ const Depo = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
-                      onClick={() => navigate(`/urunler/${String(urun.id)}`)}
+                      onClick={() => navigate(`/app/urunler/${String(urun.id)}`)}
                       className="text-indigo-600 hover:text-indigo-900 mr-5"
                     >
                       Düzenle

@@ -21,7 +21,6 @@ const UrunDetay = () => {
     model: '',
     kategori: '',
     durum: 'Depoda',
-    lokasyon: 'Merkez',
     seriNo: '',
     aciklama: '',
     barkod: '',
@@ -58,25 +57,8 @@ const UrunDetay = () => {
     }
   };
 
-  // Lokasyon ve durum seçenekleri
-  const lokasyonlar = [
-    'Depo',
-    'Merit Park',
-    'Merit Royal',
-    'Merit Cristal',
-    'Lord Place',
-    'Kaya Plazzo',
-    'Cratos',
-    'Acapolco',
-    'Elexsus',
-    'Chamada',
-    'Limak',
-    'Kaya Artemis',
-    'Concorde',
-    'Concorde Lefkosa',
-    'Grand Saphire',
-  ];
-  const durumlar = ['Depoda', 'Otelde', 'Serviste', 'Kiralandı'];
+  // Durum seçenekleri
+  const durumlar = ['Depoda', 'Organizasyonda', 'Serviste', 'Kiralandı'];
 
   if (loading) {
     return <div>Yükleniyor...</div>;
@@ -184,8 +166,8 @@ const UrunDetay = () => {
                   >
                     <option value="">Kategori Seçin</option>
                     {kategoriler.map((kategori) => (
-                      <option key={kategori.id} value={kategori.ad}>
-                        {kategori.ad}
+                      <option key={kategori.id} value={kategori.id}>
+                        {kategori.name}
                       </option>
                     ))}
                   </select>
@@ -216,27 +198,6 @@ const UrunDetay = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="lokasyon"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Lokasyon
-                  </label>
-                  <select
-                    id="lokasyon"
-                    name="lokasyon"
-                    value={formData.lokasyon}
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    {lokasyonlar.map((lokasyon) => (
-                      <option key={lokasyon} value={lokasyon}>
-                        {lokasyon}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 <div>
                   <label
@@ -302,12 +263,15 @@ const UrunDetay = () => {
               Barkod Bilgisi
             </h2>
             <div className="mb-4">
-              <BarkodGenerator barkod={formData.barkod} urunAdi={formData.ad} />
+              <BarkodGenerator 
+                barkod={formData.barkod} 
+                urunAdi={formData.ad}
+                model={formData.model}
+                onPrint={() => {
+                  // Barkod yazdırma işlemi BarkodGenerator bileşeni tarafından yönetiliyor
+                }}
+              />
             </div>
-            <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center justify-center">
-              <Printer className="h-5 w-5 mr-2" />
-              Barkodu Yazdır
-            </button>
           </div>
 
           {/* Ürün Hareketleri */}

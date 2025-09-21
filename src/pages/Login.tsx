@@ -113,16 +113,16 @@ const Login = () => {
                 <button
                   type="submit"
                   disabled={isButtonDisabled}
-                  className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white transition-all duration-300 transform ${
+                  className={`w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium transition-all duration-300 transform ${
                     isButtonDisabled 
-                      ? 'bg-gray-600 cursor-not-allowed scale-95' 
+                      ? 'bg-gray-600 text-gray-300 cursor-not-allowed scale-95' 
                       : 'bg-white text-black hover:bg-gray-200 hover:scale-105 hover:shadow-lg active:scale-95'
                   } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white`}
                 >
                   {isLoading ? (
                     <div className="flex items-center">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black mr-2"></div>
-                      <span className="animate-pulse">Giriş yapılıyor...</span>
+                      <span className="animate-pulse text-black">Giriş yapılıyor...</span>
                     </div>
                   ) : (
                     <span className="transition-all duration-300">Giriş Yap</span>
