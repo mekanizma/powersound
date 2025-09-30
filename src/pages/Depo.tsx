@@ -785,12 +785,12 @@ const Depo = () => {
                     }
                   }
 
-                  // Yazdırma penceresini oluştur
-                  const barkodHTML = barkodImages.map(item => `
-                    <div class="barkod-item" style="page-break-after: always; margin-bottom: 20px; text-align: center;">
+                  // Yazdırma penceresini oluştur (50x30 mm x 2 kolon grid)
+                  const labelsHTML = barkodImages.map(item => `
+                    <div class="label">
                       ${item.ad ? `<div class='urun-bilgi'>${item.ad}</div>` : ''}
                       ${item.model ? `<div class='urun-model'>${item.model}</div>` : ''}
-                      <img src="${item.image}" style="max-width: 100%; height: auto;" />
+                      <img class="barcode-img" src="${item.image}" />
                     </div>
                   `).join('');
 
@@ -799,32 +799,44 @@ const Depo = () => {
                       <head>
                         <title>Barkodları Yazdır</title>
                         <style>
-                          body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-                          .barkod-item { margin-bottom: 30px; }
-                          .urun-bilgi { font-size: 18px; font-weight: bold; margin-bottom: 8px; text-align: center; }
-                          .urun-model { font-size: 15px; color: #555; margin-bottom: 12px; text-align: center; }
-                          @media print {
-                            @page { margin: 0; }
-                            body { margin: 0; padding: 0; }
-                            .barkod-item { page-break-after: always; margin-bottom: 0; }
-                            .barkod-item:last-child { page-break-after: avoid; }
-                            /* Tarayıcı başlık ve tarih bilgilerini gizle */
-                            @page :first { margin-top: 0; }
-                            @page :left { margin-left: 0; }
-                            @page :right { margin-right: 0; }
+                          @page { margin: 0; }
+                          body { margin: 0; padding: 0; font-family: Arial, sans-serif; width: 100mm; }
+
+                          .sheet {
+                            display: flex;
+                            flex-wrap: wrap;                 /* yan yana ikişer, alt satıra geç */
+                            width: 100mm;                    /* 2 x 50mm */
+                            margin: 0 auto;
+                            gap: 0;                          /* bitişik */
+                            box-sizing: border-box;
+                            page-break-inside: avoid; break-inside: avoid;
                           }
+
+                          .label {
+                            width: 50mm;
+                            height: 30mm;
+                            box-sizing: border-box;
+                            display: inline-flex;            /* inline-block benzeri, satır dolunca alta geçsin */
+                            flex-direction: column;
+                            justify-content: center;
+                            align-items: center;
+                            overflow: hidden;
+                            padding: 0; margin: 0;
+                            page-break-inside: avoid; break-inside: avoid;
+                          }
+
+                          .urun-bilgi { font-size: 10px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
+                          .urun-model { font-size: 9px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
+                          .barcode-img { width: 48mm; height: auto; max-height: 18mm; }
                         </style>
                       </head>
                       <body>
-                        ${barkodHTML}
+                        <div class="sheet">${labelsHTML}</div>
                         <script>
-                          window.onload = function() {
-                            // Yazdırma ayarlarını optimize et
-                            setTimeout(() => {
-                              window.print();
-                              setTimeout(() => window.close(), 1000);
-                            }, 100);
-                          };
+                          window.addEventListener('load', () => {
+                            window.print();
+                            setTimeout(() => window.close(), 300);
+                          });
                         </script>
                       </body>
                     </html>
