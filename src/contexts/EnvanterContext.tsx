@@ -322,6 +322,8 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addHareket = async (hareket: Hareket) => {
     try {
+      console.log('Hareket ekleniyor:', hareket);
+      
       const { data, error } = await supabase
         .from('movements')
         .insert([{
@@ -330,13 +332,18 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           quantity: hareket.miktar,
           description: hareket.aciklama,
           location_id: hareket.lokasyon,
-          user_id: hareket.kullanici,
+          user_id: hareket.kullanici || null,
           created_at: new Date().toISOString()
         }])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase hareket ekleme hatası:', error);
+        throw new Error(`Veritabanı hatası: ${error.message}`);
+      }
+
+      console.log('Hareket başarıyla eklendi:', data);
 
       // Yeni hareketi listeye ekle
       const newHareket = {
@@ -351,24 +358,43 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (urun) {
         const yeniMiktar = urun.miktar + (hareket.tip === 'Giriş' ? hareket.miktar : -hareket.miktar);
         
+        console.log('Ürün miktarı güncelleniyor:', {
+          urunId: urun.id,
+          eskiMiktar: urun.miktar,
+          yeniMiktar,
+          hareketTipi: hareket.tip,
+          hareketMiktari: hareket.miktar
+        });
+        
+        // Miktar negatif olamaz, minimum 0 olmalı
+        const finalMiktar = Math.max(0, yeniMiktar);
+        
         // Ürünü güncelle (miktar ve lokasyon)
         setUrunler(prevUrunler =>
           prevUrunler.map(u =>
             u.id === urun.id
-              ? { ...u, miktar: yeniMiktar, location_id: hareket.lokasyon, lokasyon: hareket.lokasyon }
+              ? { ...u, miktar: finalMiktar, location_id: hareket.lokasyon, lokasyon: hareket.lokasyon }
               : u
           )
         );
 
         // Supabase'de ürün miktarını ve lokasyonunu güncelle
-        await supabase
+        // Constraint hatası olmaması için minimum 1 yapıyoruz
+        const dbMiktar = Math.max(1, finalMiktar);
+        
+        const { error: updateError } = await supabase
           .from('products')
           .update({ 
-            quantity: yeniMiktar,
-            status: yeniMiktar > 0 ? 'Depoda' : 'Tükenmiş',
+            quantity: dbMiktar,
+            status: finalMiktar > 0 ? 'Depoda' : 'Tükenmiş',
             location_id: hareket.lokasyon
           })
           .eq('id', urun.id);
+
+        if (updateError) {
+          console.error('Ürün güncelleme hatası:', updateError);
+          throw new Error(`Ürün güncelleme hatası: ${updateError.message}`);
+        }
       }
     } catch (error) {
       console.error('Hareket ekleme hatası:', error);

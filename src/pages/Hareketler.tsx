@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle } from 'lucide-react';
+import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, List, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
 import { Urun } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 const Hareketler = () => {
   const { hareketler, urunler, removeHareket, addHareket, updateHareket, removeHareketler } = useEnvanter();
@@ -24,6 +25,24 @@ const Hareketler = () => {
   const [barcodeMovementQuantity, setBarcodeMovementQuantity] = useState(1);
   const [barcodeMovementLocation, setBarcodeMovementLocation] = useState('');
   const [barcodeMovementDescription, setBarcodeMovementDescription] = useState('');
+  
+  // Toplu barkod tarama için yeni state'ler
+  const [showBulkBarcodeModal, setShowBulkBarcodeModal] = useState(false);
+  const [scannedBarcodes, setScannedBarcodes] = useState<Array<{
+    id: string;
+    barcode: string;
+    product: Urun | null;
+    quantity: number;
+    error?: string;
+  }>>([]);
+  const [bulkMovementType, setBulkMovementType] = useState<'Giriş' | 'Çıkış'>('Çıkış');
+  const [bulkMovementLocation, setBulkMovementLocation] = useState('');
+  const [bulkMovementDescription, setBulkMovementDescription] = useState('');
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  
+  // Sayfalama için state'ler
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [selectedMovements, setSelectedMovements] = useState<string[]>([]);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingMovement, setEditingMovement] = useState<any>(null);
@@ -179,6 +198,17 @@ const Hareketler = () => {
 
   const handleBarcodeMovement = async () => {
     if (!barcodeProduct) return;
+    
+    // Çıkış hareketi için stok kontrolü
+    if (barcodeMovementType === 'Çıkış' && barcodeProduct.miktar < barcodeMovementQuantity) {
+      const onay = confirm(
+        `Uyarı: ${barcodeProduct.ad} ürününden sadece ${barcodeProduct.miktar} adet stokta var. ` +
+        `${barcodeMovementQuantity} adet çıkış yapmak istiyorsunuz. ` +
+        `Bu işlem stok miktarını 0'a düşürecek. Devam etmek istiyor musunuz?`
+      );
+      if (!onay) return;
+    }
+    
     try {
       await addHareket({
         id: '',
@@ -189,13 +219,153 @@ const Hareketler = () => {
         tarih: new Date().toLocaleDateString('tr-TR'),
         aciklama: barcodeMovementDescription,
         lokasyon: barcodeMovementLocation,
-        kullanici: user?.username || 'Kullanıcı'
+        kullanici: user?.id || ''
       });
       closeBarcodeModal();
       alert('İşlem başarıyla kaydedildi!');
     } catch (error) {
-      alert('İşlem kaydedilemedi!');
+      console.error('Tek hareket hatası:', error);
+      alert(`İşlem kaydedilemedi! Hata: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
     }
+  };
+
+  // Toplu barkod tarama fonksiyonları
+  const openBulkBarcodeModal = () => {
+    setShowBulkBarcodeModal(true);
+    setScannedBarcodes([]);
+    setBulkMovementType('Çıkış');
+    setBulkMovementLocation('');
+    setBulkMovementDescription('');
+    setIsProcessingBulk(false);
+    setCurrentPage(1);
+  };
+
+  const closeBulkBarcodeModal = () => {
+    setShowBulkBarcodeModal(false);
+    setScannedBarcodes([]);
+    setBulkMovementType('Çıkış');
+    setBulkMovementLocation('');
+    setBulkMovementDescription('');
+    setIsProcessingBulk(false);
+  };
+
+  const handleBulkBarcodeScan = (barcode: string) => {
+    // Aynı barkodun daha önce eklenip eklenmediğini kontrol et
+    const existingIndex = scannedBarcodes.findIndex(item => item.barcode === barcode);
+    
+    if (existingIndex !== -1) {
+      // Eğer varsa miktarını artır
+      setScannedBarcodes(prev => 
+        prev.map((item, index) => 
+          index === existingIndex 
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      );
+    } else {
+      // Yeni barkod ekle
+      const foundProduct = urunler.find(u => u.barkod === barcode);
+      const newItem = {
+        id: Date.now().toString(),
+        barcode,
+        product: foundProduct || null,
+        quantity: 1,
+        error: foundProduct ? undefined : 'Ürün bulunamadı'
+      };
+      
+      setScannedBarcodes(prev => [...prev, newItem]);
+    }
+  };
+
+  const removeScannedBarcode = (id: string) => {
+    setScannedBarcodes(prev => prev.filter(item => item.id !== id));
+  };
+
+  const updateScannedBarcodeQuantity = (id: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeScannedBarcode(id);
+      return;
+    }
+    
+    setScannedBarcodes(prev => 
+      prev.map(item => 
+        item.id === id ? { ...item, quantity } : item
+      )
+    );
+  };
+
+  const processBulkMovements = async () => {
+    if (!bulkMovementLocation || scannedBarcodes.length === 0) return;
+    
+    setIsProcessingBulk(true);
+    const validBarcodes = scannedBarcodes.filter(item => item.product && !item.error);
+    
+    // Çıkış hareketi için stok kontrolü
+    if (bulkMovementType === 'Çıkış') {
+      const yetersizStoklar = validBarcodes.filter(item => 
+        item.product && item.product.miktar < item.quantity
+      );
+      
+      if (yetersizStoklar.length > 0) {
+        const uyarıMesajı = yetersizStoklar.map(item => 
+          `${item.product?.ad}: ${item.product?.miktar} adet stokta, ${item.quantity} adet çıkış`
+        ).join('\n');
+        
+        const onay = confirm(
+          `Uyarı: Aşağıdaki ürünlerde yetersiz stok var:\n\n${uyarıMesajı}\n\n` +
+          `Bu işlem stok miktarlarını 0'a düşürecek. Devam etmek istiyor musunuz?`
+        );
+        if (!onay) {
+          setIsProcessingBulk(false);
+          return;
+        }
+      }
+    }
+    
+    try {
+      for (const item of validBarcodes) {
+        if (item.product) {
+          await addHareket({
+            id: '',
+            urunId: item.product.id,
+            urunAdi: item.product.ad,
+            tip: bulkMovementType,
+            miktar: item.quantity,
+            tarih: new Date().toLocaleDateString('tr-TR'),
+            aciklama: bulkMovementDescription,
+            lokasyon: bulkMovementLocation,
+            kullanici: user?.id || ''
+          });
+        }
+      }
+      
+      closeBulkBarcodeModal();
+      alert(`${validBarcodes.length} hareket başarıyla kaydedildi!`);
+    } catch (error) {
+      console.error('Toplu hareket hatası:', error);
+      alert(`Hareketler kaydedilirken bir hata oluştu! Hata: ${error instanceof Error ? error.message : 'Bilinmeyen hata'}`);
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  // Sayfalama hesaplamaları
+  const totalPages = Math.ceil(scannedBarcodes.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentItems = scannedBarcodes.slice(startIndex, endIndex);
+
+  // Sayfa değiştirme fonksiyonları
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
+
+  const goToPreviousPage = () => {
+    goToPage(currentPage - 1);
+  };
+
+  const goToNextPage = () => {
+    goToPage(currentPage + 1);
   };
 
   // Hareket seçme işlemleri
@@ -306,11 +476,18 @@ const Hareketler = () => {
             </div>
           )}
           <button
+            onClick={openBulkBarcodeModal}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+          >
+            <Camera className="h-5 w-5 mr-2" />
+            Toplu Barkod Gir
+          </button>
+          <button
             onClick={openBarcodeModal}
             className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
           >
             <Scan className="h-5 w-5 mr-2" />
-            Barkod Tara
+            Tek Barkod Gir
           </button>
           <Link to="/app/hareketler/ekle" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center">
             <Plus className="h-5 w-5 mr-2" />
@@ -551,7 +728,7 @@ const Hareketler = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Barkod Tara</h3>
+              <h3 className="text-lg font-medium text-gray-900">Barkod Gir</h3>
               <button
                 onClick={closeBarcodeModal}
                 className="text-gray-400 hover:text-gray-500"
@@ -642,6 +819,240 @@ const Hareketler = () => {
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Kaydet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toplu Barkod Tarama Modalı */}
+      {showBulkBarcodeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Toplu Barkod Girişi</h3>
+              <button
+                onClick={closeBulkBarcodeModal}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-4">
+              {/* Sol taraf - Barkod tarayıcı */}
+              <div className="lg:w-1/2">
+                <div className="bg-gray-50 rounded-lg p-4 h-full">
+                  <h4 className="font-medium text-gray-700 mb-3">Barkod Girişi</h4>
+                  <BarcodeScanner 
+                    onScan={handleBulkBarcodeScan}
+                    onClose={() => {}}
+                    showCloseButton={false}
+                    showInput={true}
+                    showCamera={false}
+                  />
+                </div>
+              </div>
+              
+              {/* Sağ taraf - Okutulan barkodlar listesi */}
+              <div className="lg:w-1/2 flex flex-col">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-medium text-gray-700">Okutulan Barkodlar ({scannedBarcodes.length})</h4>
+                  {scannedBarcodes.length > 0 && (
+                    <button
+                      onClick={() => setScannedBarcodes([])}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Listeyi Temizle
+                    </button>
+                  )}
+                </div>
+                
+                <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
+                  {scannedBarcodes.length === 0 ? (
+                    <div className="p-4 text-center text-gray-500">
+                      <Scan className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                      <p>Henüz barkod girilmedi</p>
+                      <p className="text-sm">Barkod makinesinden okutun veya manuel girin</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="divide-y divide-gray-200">
+                        {currentItems.map((item) => (
+                          <div key={item.id} className="p-3 hover:bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                                    {item.barcode}
+                                  </span>
+                                  {item.product ? (
+                                    <CheckCircle className="h-4 w-4 text-green-500" />
+                                  ) : (
+                                    <X className="h-4 w-4 text-red-500" />
+                                  )}
+                                </div>
+                                {item.product ? (
+                                  <div className="mt-1">
+                                    <p className="text-sm font-medium text-gray-900">{item.product.ad}</p>
+                                    <p className="text-xs text-gray-500">Model: {item.product.model}</p>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-red-600 mt-1">{item.error}</p>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-2 ml-3">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => updateScannedBarcodeQuantity(item.id, Number(e.target.value))}
+                                  className="w-16 text-center border border-gray-300 rounded px-2 py-1 text-sm"
+                                />
+                                <button
+                                  onClick={() => removeScannedBarcode(item.id)}
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Sayfalama kontrolleri */}
+                      {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
+                          <div className="flex items-center text-sm text-gray-700">
+                            <span>
+                              Sayfa {currentPage} / {totalPages} 
+                              ({scannedBarcodes.length} toplam ürün)
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={goToPreviousPage}
+                              disabled={currentPage === 1}
+                              className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ChevronLeft className="h-4 w-4" />
+                            </button>
+                            
+                            <div className="flex items-center space-x-1">
+                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let pageNum;
+                                if (totalPages <= 5) {
+                                  pageNum = i + 1;
+                                } else if (currentPage <= 3) {
+                                  pageNum = i + 1;
+                                } else if (currentPage >= totalPages - 2) {
+                                  pageNum = totalPages - 4 + i;
+                                } else {
+                                  pageNum = currentPage - 2 + i;
+                                }
+                                
+                                return (
+                                  <button
+                                    key={pageNum}
+                                    onClick={() => goToPage(pageNum)}
+                                    className={`px-2 py-1 text-sm rounded-md ${
+                                      currentPage === pageNum
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+                                    }`}
+                                  >
+                                    {pageNum}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            <button
+                              onClick={goToNextPage}
+                              disabled={currentPage === totalPages}
+                              className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <ChevronRight className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Alt kısım - Hareket ayarları */}
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">İşlem Tipi</label>
+                  <select
+                    value={bulkMovementType}
+                    onChange={(e) => setBulkMovementType(e.target.value as 'Giriş' | 'Çıkış')}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="Giriş">Giriş</option>
+                    <option value="Çıkış">Çıkış</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lokasyon*</label>
+                  <select
+                    value={bulkMovementLocation}
+                    onChange={(e) => setBulkMovementLocation(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">Lokasyon Seçin</option>
+                    {locations.map(loc => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Açıklama</label>
+                  <input
+                    type="text"
+                    value={bulkMovementDescription}
+                    onChange={(e) => setBulkMovementDescription(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Toplu hareket açıklaması"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={closeBulkBarcodeModal}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                İptal
+              </button>
+              <button
+                onClick={processBulkMovements}
+                disabled={!bulkMovementLocation || scannedBarcodes.filter(item => item.product).length === 0 || isProcessingBulk}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {isProcessingBulk ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    İşleniyor...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Hareketleri Kaydet ({scannedBarcodes.filter(item => item.product).length})
+                  </>
+                )}
               </button>
             </div>
           </div>

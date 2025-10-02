@@ -14,38 +14,53 @@ import QrScanner from 'react-qr-scanner';
 interface BarcodeScannerProps {
   onClose?: () => void;
   onScan?: (barcode: string) => void;
+  showCloseButton?: boolean;
+  showInput?: boolean;
+  showCamera?: boolean;
 }
 
-const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onClose, onScan }) => {
+const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onClose, onScan, showCloseButton = true, showInput = true, showCamera = true }) => {
   const [barcodeInput, setBarcodeInput] = useState('');
   const navigate = useNavigate();
   const [cameraActive, setCameraActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Kamera izinlerini kontrol et
-    const checkCameraPermission = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(track => track.stop());
-        setError(null);
-      } catch (err) {
-        setError('Kamera erişimi reddedildi. Lütfen kamera izinlerini kontrol edin.');
-        setCameraActive(false);
-      }
-    };
+    // Sadece kamera gösterilecekse izinleri kontrol et
+    if (showCamera) {
+      const checkCameraPermission = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          stream.getTracks().forEach(track => track.stop());
+          setError(null);
+        } catch (err) {
+          setError('Kamera erişimi reddedildi. Lütfen kamera izinlerini kontrol edin.');
+          setCameraActive(false);
+        }
+      };
 
-    checkCameraPermission();
-  }, []);
+      checkCameraPermission();
+    } else {
+      setCameraActive(false);
+    }
+  }, [showCamera]);
 
   const handleScan = async (data: string | null) => {
     if (data) {
-      setCameraActive(false);
       setBarcodeInput(data);
       
       if (onScan) {
         onScan(data);
-      } else {
+        // Toplu tarama modunda kamera aktif kalır ve input temizlenir
+        if (!showCloseButton) {
+          setBarcodeInput(''); // Input'u temizle
+          return;
+        }
+      }
+      
+      setCameraActive(false);
+      
+      if (!onScan) {
         try {
           const { data: product, error } = await supabase
             .from('products')
@@ -77,42 +92,53 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onClose, onScan }) => {
     setCameraActive(false);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
-        <h2 className="text-xl font-bold text-gray-800 mb-4">Barkod Tarama</h2>
-        
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
+  const scannerContent = (
+    <>
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
 
-        {cameraActive && (
-          <div className="relative">
-            <QrScanner
-              delay={300}
-              onError={handleError}
-              onScan={handleScan}
-              style={{ width: '100%' }}
-              constraints={{
-                video: { facingMode: 'environment' }
-              }}
-            />
-            <div className="absolute inset-0 border-2 border-indigo-500 rounded-lg pointer-events-none"></div>
-          </div>
-        )}
+      {showCamera && cameraActive && (
+        <div className="relative">
+          <QrScanner
+            delay={300}
+            onError={handleError}
+            onScan={handleScan}
+            style={{ width: '100%' }}
+            constraints={{
+              video: { facingMode: 'environment' }
+            }}
+          />
+          <div className="absolute inset-0 border-2 border-indigo-500 rounded-lg pointer-events-none"></div>
+        </div>
+      )}
 
+      {showInput && (
         <input
           id="barcode-input"
           type="text"
           value={barcodeInput}
-          onChange={(e) => setBarcodeInput(e.target.value)}
+          onChange={(e) => {
+            setBarcodeInput(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && barcodeInput.trim()) {
+              if (onScan) {
+                onScan(barcodeInput.trim());
+                setBarcodeInput(''); // Input'u temizle
+              }
+            }
+          }}
           placeholder="Barkodu okutun veya girin..."
           className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-4 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
           autoComplete="off"
+          autoFocus
         />
+      )}
 
+      {showCloseButton && (
         <div className="flex justify-end space-x-3 mt-4">
           <button
             onClick={() => {
@@ -123,6 +149,21 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onClose, onScan }) => {
             Kapat
           </button>
         </div>
+      )}
+    </>
+  );
+
+  // Eğer showCloseButton false ise, sadece içeriği döndür (modal wrapper olmadan)
+  if (!showCloseButton) {
+    return <div>{scannerContent}</div>;
+  }
+
+  // Normal modal görünümü
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full">
+        <h2 className="text-xl font-bold text-gray-800 mb-4">Barkod Tarama</h2>
+        {scannerContent}
       </div>
     </div>
   );

@@ -24,7 +24,7 @@ export const printBarkod = (barkodRef: React.RefObject<HTMLCanvasElement>, urunA
             display: grid;
             grid-template-columns: 50mm 50mm; /* iki bitişik etiket */
             grid-template-rows: 30mm;       /* tek satır 30mm */
-            gap: 0;                          /* bitişik */
+            gap: 6mm;                          /* bitişik */
             justify-content: start;
             align-content: start;
             padding: 0;
@@ -50,12 +50,12 @@ export const printBarkod = (barkodRef: React.RefObject<HTMLCanvasElement>, urunA
             break-inside: avoid;
           }
 
-          .urun-bilgi { font-size: 10px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
-          .urun-model { font-size: 9px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
+          .urun-bilgi { font-size: 15px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
+          .urun-model { font-size: 10px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
           .barcode-img { width: 48mm; height: auto; max-height: 18mm; }
 
           @media print {
-            body { margin: 0; }
+            body { margin: 2mm; }
           }
         </style>
       </head>

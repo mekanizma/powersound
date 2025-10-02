@@ -346,7 +346,7 @@ const Depo = () => {
             className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
           >
             <Scan className="h-5 w-5 mr-2" />
-            Barkod Tara
+            Barkod Gir
           </button>
         </div>
       </div>
@@ -691,6 +691,8 @@ const Depo = () => {
         <BarcodeScanner
           onClose={() => setShowScanner(false)}
           onScan={handleBarcodeScan}
+          showCamera={false}
+          showInput={true}
         />
       )}
 
@@ -799,15 +801,15 @@ const Depo = () => {
                       <head>
                         <title>Barkodları Yazdır</title>
                         <style>
-                          @page { margin: 0; }
-                          body { margin: 0; padding: 0; font-family: Arial, sans-serif; width: 100mm; }
+                          @page { margin: 2mm; }
+                          body { margin: 0; padding: 0; font-family: Arial, sans-serif; width: 110mm; }
 
                           .sheet {
                             display: flex;
                             flex-wrap: wrap;                 /* yan yana ikişer, alt satıra geç */
-                            width: 100mm;                    /* 2 x 50mm */
-                            margin: 0 auto;
-                            gap: 0;                          /* bitişik */
+                            width: 110mm;                    /* 2 x 50mm */
+                            margin: 0;
+                            gap: 9mm;                          /* bitişik */
                             box-sizing: border-box;
                             page-break-inside: avoid; break-inside: avoid;
                           }
@@ -825,8 +827,8 @@ const Depo = () => {
                             page-break-inside: avoid; break-inside: avoid;
                           }
 
-                          .urun-bilgi { font-size: 10px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
-                          .urun-model { font-size: 9px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
+                          .urun-bilgi { font-size: 15px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
+                          .urun-model { font-size: 10px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
                           .barcode-img { width: 48mm; height: auto; max-height: 18mm; }
                         </style>
                       </head>

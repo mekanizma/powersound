@@ -9,7 +9,7 @@ const Sidebar = () => {
       <div className="px-6 py-8 border-b border-indigo-800/30 flex flex-col items-center">
         <div className="w-[120px] h-[120px] rounded-full overflow-hidden shadow-lg border-2 border-white/20 mb-4">
           <img 
-            src="https://scontent.fecn1-1.fna.fbcdn.net/v/t39.30808-6/274330725_100270049277023_6144125149422236442_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=6ee11a&_nc_ohc=m0RrKWNEHzgQ7kNvwEkK4A7&_nc_oc=Adl709lykMze0Ehe8Esm9Pv7d6y9MgK9ZUjBqOvrJ1n6jI8yiMsmFG9of_GXCinHZYs&_nc_zt=23&_nc_ht=scontent.fecn1-1.fna&_nc_gid=kUZyhL-GiRPsb4j8-GBd6g&oh=00_AfZoqRpE9lumh3C0QWJ8cQbIzaCarRv2K3WD7GKDFogMhA&oe=68D21E6A" 
+            src="/logo.png" 
             alt="Cyprus Power Sound Logo"
             className="w-full h-full object-cover"
             style={{
