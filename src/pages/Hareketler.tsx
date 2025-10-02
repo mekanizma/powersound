@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, List, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, List, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -68,6 +68,7 @@ const Hareketler = () => {
   const [deleteModalMovement, setDeleteModalMovement] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
   
   // Fetch locations and users from Supabase
   useEffect(() => {
@@ -161,6 +162,27 @@ const Hareketler = () => {
       setSortBy(column);
       setSortDir('asc');
     }
+  };
+
+  // Lokasyona göre gruplama
+  const locationIdSetFromMovements = Array.from(new Set(sortedHareketler.map(h => String(h.lokasyon))));
+  const notInDesired = locations.filter(l => !desiredLocationsOrder.some(name => (l.name || '').toLowerCase() === name.toLowerCase()));
+  const additionalLocationsFromData = locationIdSetFromMovements
+    .filter(id => !locations.find(l => String(l.id) === String(id)))
+    .map(id => ({ id: String(id), name: String(id) }));
+  const displayLocations: { id: string, name: string }[] = [
+    ...orderedLocations,
+    ...notInDesired,
+    ...additionalLocationsFromData
+  ].filter((loc, index, self) => self.findIndex(l => String(l.id) === String(loc.id)) === index);
+
+  const groupedMovements: Record<string, typeof sortedHareketler> = displayLocations.reduce((acc, loc) => {
+    acc[loc.id] = sortedHareketler.filter(h => String(h.lokasyon) === String(loc.id));
+    return acc;
+  }, {} as Record<string, typeof sortedHareketler>);
+
+  const toggleLocationCollapse = (locId: string) => {
+    setCollapsedLocations(prev => ({ ...prev, [locId]: !prev[locId] }));
   };
 
   const formatDateTime = (isoString: string) => {
@@ -575,160 +597,99 @@ const Hareketler = () => {
         </div>
       </div>
       
-      {/* Hareket Tablosu */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <input
-                    type="checkbox"
-                    checked={selectedMovements.length === filteredHareketler.length}
-                    onChange={selectedMovements.length === filteredHareketler.length ? deselectAllMovements : selectAllMovements}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort('tarih')}
+      {/* Lokasyon Klasörleri */}
+      <div className="space-y-4">
+        {displayLocations.length > 0 ? (
+          displayLocations.map(loc => {
+            const movements = groupedMovements[loc.id] || [];
+            if (selectedLocation && String(loc.id) !== String(selectedLocation)) return null;
+            return (
+              <div key={loc.id} className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
+                <button
+                  onClick={() => toggleLocationCollapse(loc.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 text-left"
                 >
-                  <div className="flex items-center">
-                    Tarih
-                    {sortBy === 'tarih' && (
-                      sortDir === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-5 w-5 text-gray-600" />
+                    <span className="font-medium text-gray-800">{loc.name}</span>
+                    <span className="text-xs text-gray-500">({movements.length} kayıt)</span>
+                  </div>
+                  {collapsedLocations[loc.id] ? (
+                    <ArrowDown className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+                {!collapsedLocations[loc.id] && (
+                  <div className="divide-y divide-gray-100">
+                    {/* Kolon Başlıkları */}
+                    <div className="px-4 py-2 hidden md:grid md:grid-cols-8 gap-3 bg-gray-50 text-xs font-medium text-gray-500">
+                      <div>Tarih</div>
+                      <div>Ürün</div>
+                      <div>Tip</div>
+                      <div>Miktar</div>
+                      <div>Lokasyon</div>
+                      <div>Açıklama</div>
+                      <div>İşlemi Yapan</div>
+                      <div className="text-right">İşlemler</div>
+                    </div>
+
+                    {movements.length > 0 ? movements.map(hareket => (
+                      <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
+                        <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
+                        <div className="text-sm font-medium text-gray-900 truncate">{getUrunAdi(hareket.urunId)}</div>
+                        <div>
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {hareket.tip}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
+                        <div className="text-sm text-gray-700">{getLocationName(hareket.lokasyon)}</div>
+                        <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                        <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
+                        <div className="flex items-center justify-between md:justify-end gap-3">
+                          <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
+                            <input
+                              type="checkbox"
+                              checked={selectedMovements.includes(hareket.id)}
+                              onChange={() => toggleMovementSelection(hareket.id)}
+                              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                            />
+                            Seç
+                          </label>
+                          <input
+                            type="checkbox"
+                            checked={selectedMovements.includes(hareket.id)}
+                            onChange={() => toggleMovementSelection(hareket.id)}
+                            className="hidden md:block h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                          />
+                          <button
+                            onClick={() => openEditModal(hareket)}
+                            className="text-indigo-600 hover:text-indigo-900 text-sm"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => handleDelete(hareket)}
+                            className="text-red-600 hover:text-red-900 text-sm"
+                          >
+                            Sil
+                          </button>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
                     )}
                   </div>
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort('urunAdi')}
-                >
-                  <div className="flex items-center">
-                    Ürün
-                    {sortBy === 'urunAdi' && (
-                      sortDir === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort('tip')}
-                >
-                  <div className="flex items-center">
-                    Tip
-                    {sortBy === 'tip' && (
-                      sortDir === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort('miktar')}
-                >
-                  <div className="flex items-center">
-                    Miktar
-                    {sortBy === 'miktar' && (
-                      sortDir === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />
-                    )}
-                  </div>
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Lokasyon
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Açıklama
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                  onClick={() => handleSort('kullanici')}
-                >
-                  <div className="flex items-center">
-                    İşlemi Yapan
-                    {sortBy === 'kullanici' && (
-                      sortDir === 'asc' ? <ArrowUp className="h-4 w-4 ml-1" /> : <ArrowDown className="h-4 w-4 ml-1" />
-                    )}
-                  </div>
-                </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  İşlemler
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {sortedHareketler.length > 0 ? (
-                sortedHareketler.map((hareket) => (
-                  <tr key={hareket.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedMovements.includes(hareket.id)}
-                        onChange={() => toggleMovementSelection(hareket.id)}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                      />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {formatDateTime(hareket.tarih)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{getUrunAdi(hareket.urunId)}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {hareket.tip}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {hareket.miktar} adet
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {getLocationName(hareket.lokasyon)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                      {hareket.aciklama}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {getUserName(hareket.kullanici)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => openEditModal(hareket)}
-                        className="text-indigo-600 hover:text-indigo-900 mr-4"
-                      >
-                        Düzenle
-                      </button>
-                      <button
-                        onClick={() => handleDelete(hareket)}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Sil
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    Hareket kaydı bulunamadı
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 p-6 text-center text-sm text-gray-500">
+            Hareket kaydı bulunamadı
+          </div>
+        )}
       </div>
       
       {/* Dışa Aktar Butonu */}
