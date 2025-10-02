@@ -13,6 +13,7 @@ const Hareketler = () => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
   const [sortBy, setSortBy] = useState('tarih');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
@@ -39,6 +40,20 @@ const Hareketler = () => {
   const [bulkMovementLocation, setBulkMovementLocation] = useState('');
   const [bulkMovementDescription, setBulkMovementDescription] = useState('');
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  
+  // Gösterilecek lokasyon sırası
+  const desiredLocationsOrder = [
+    'Depo',
+    'Limak Deluxe',
+    'Kaya Artemis',
+    'Kaya Palazzo',
+    'Les Ambassadeurs',
+    'Lords Palace',
+    'Dış Kiralama'
+  ];
+  const orderedLocations = desiredLocationsOrder
+    .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()))
+    .filter((l): l is {id: string, name: string} => Boolean(l));
   
   // Sayfalama için state'ler
   const [currentPage, setCurrentPage] = useState(1);
@@ -106,7 +121,8 @@ const Hareketler = () => {
     const matchesSearch = hareket.urunAdi.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           hareket.aciklama.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = selectedType ? hareket.tip === selectedType : true;
-    return matchesSearch && matchesType;
+    const matchesLocation = selectedLocation ? String(hareket.lokasyon) === String(selectedLocation) : true;
+    return matchesSearch && matchesType && matchesLocation;
   });
   
   // Sıralama
@@ -525,6 +541,19 @@ const Hareketler = () => {
               <option value="Çıkış">Çıkış</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lokasyon</label>
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">Tüm Lokasyonlar</option>
+              {orderedLocations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         
         <div className="mt-4 flex items-center justify-between">
@@ -537,6 +566,7 @@ const Hareketler = () => {
             onClick={() => {
               setSearchTerm('');
               setSelectedType('');
+              setSelectedLocation('');
             }}
             className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
           >
@@ -786,7 +816,7 @@ const Hareketler = () => {
                       className="w-full border border-gray-300 rounded px-2 py-1"
                     >
                       <option value="">Lokasyon Seçin</option>
-                      {locations.map(loc => (
+                      {orderedLocations.map(loc => (
                         <option key={loc.id} value={loc.id}>
                           {loc.name}
                         </option>
@@ -1009,7 +1039,7 @@ const Hareketler = () => {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                   >
                     <option value="">Lokasyon Seçin</option>
-                    {locations.map(loc => (
+                    {orderedLocations.map(loc => (
                       <option key={loc.id} value={loc.id}>
                         {loc.name}
                       </option>
@@ -1128,7 +1158,7 @@ const Hareketler = () => {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
                 >
                   <option value="">Lokasyon Seçin</option>
-                  {locations.map(loc => (
+                  {orderedLocations.map(loc => (
                     <option key={loc.id} value={loc.id}>{loc.name}</option>
                   ))}
                 </select>

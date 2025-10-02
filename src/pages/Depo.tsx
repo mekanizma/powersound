@@ -722,9 +722,122 @@ const Depo = () => {
 
       {showBulkBarcodeModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50">
-          <div className="bg-white p-5 rounded-lg shadow-xl max-w-2xl w-full">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Seçili Barkodlar</h2>
-            <div className="flex flex-col gap-8 mb-4">
+          <div className="bg-white p-5 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 sticky top-0 bg-white z-10 pt-1 pb-3">
+              <h2 className="text-xl font-bold text-gray-800">Seçili Barkodlar</h2>
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button
+                  onClick={async () => {
+                    if (selectedProducts.length === 0) return;
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) return;
+
+                    const barkodImages: Array<{ image: string; ad: string; model: string }> = [];
+                    for (const productId of selectedProducts) {
+                      const product = urunler.find(u => u.id === productId);
+                      if (product) {
+                        const tempCanvas = document.createElement('canvas');
+                        const ctx = tempCanvas.getContext('2d');
+                        if (ctx) {
+                          try {
+                            const JsBarcode = await import('jsbarcode');
+                            JsBarcode.default(tempCanvas, product.barkod, {
+                              format: 'CODE128',
+                              width: 2,
+                              height: 50,
+                              displayValue: true,
+                              text: product.barkod,
+                              fontSize: 16,
+                              margin: 10,
+                            });
+                            barkodImages.push({
+                              image: tempCanvas.toDataURL('image/png'),
+                              ad: product.ad,
+                              model: product.model
+                            });
+                          } catch (error) {
+                            console.error('Barkod oluşturma hatası:', error);
+                          }
+                        }
+                      }
+                    }
+
+                    const labelsHTML = barkodImages.map(item => `
+                    <div class="label">
+                      ${item.ad ? `<div class='urun-bilgi'>${item.ad}</div>` : ''}
+                      ${item.model ? `<div class='urun-model'>${item.model}</div>` : ''}
+                      <img class="barcode-img" src="${item.image}" />
+                    </div>
+                  `).join('');
+
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>Barkodları Yazdır</title>
+                          <style>
+                            @page { margin: 2mm; }
+                            body { margin: 0; padding: 0; font-family: Arial, sans-serif; width: 110mm; }
+
+                            .sheet {
+                              display: flex;
+                              flex-wrap: wrap;
+                              width: 110mm;
+                              margin: 0;
+                              gap: 9mm;
+                              box-sizing: border-box;
+                              page-break-inside: avoid; break-inside: avoid;
+                            }
+
+                            .label {
+                              width: 50mm;
+                              height: 30mm;
+                              box-sizing: border-box;
+                              display: inline-flex;
+                              flex-direction: column;
+                              justify-content: center;
+                              align-items: center;
+                              overflow: hidden;
+                              padding: 0; margin: 0;
+                              page-break-inside: avoid; break-inside: avoid;
+                            }
+
+                            .urun-bilgi { font-size: 15px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
+                            .urun-model { font-size: 10px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
+                            .barcode-img { width: 48mm; height: auto; max-height: 18mm; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="sheet">${labelsHTML}</div>
+                          <script>
+                            window.addEventListener('load', () => {
+                              window.print();
+                              setTimeout(() => window.close(), 300);
+                            });
+                          <\/script>
+                        </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                    setShowBulkBarcodeModal(false);
+                    setSelectedProducts([]);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded flex items-center text-sm"
+                >
+                  <Printer className="h-5 w-5 mr-2" />
+                  Tümünü Yazdır
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBulkBarcodeModal(false);
+                    setSelectedProducts([]);
+                  }}
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-2 rounded text-sm"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col gap-8 mb-4">
               {selectedProducts.map(productId => {
                 const product = urunler.find(u => u.id === productId);
                 if (!product) return null;
@@ -738,121 +851,6 @@ const Depo = () => {
                   </div>
                 );
               })}
-            </div>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => {
-                  setShowBulkBarcodeModal(false);
-                  setSelectedProducts([]);
-                }}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded"
-              >
-                Kapat
-              </button>
-              <button
-                onClick={async () => {
-                  // Tüm seçili ürünleri tek bir yazdırma penceresinde göster
-                  const printWindow = window.open('', '_blank');
-                  if (!printWindow) return;
-
-                  // Tüm barkodları oluştur
-                  const barkodImages = [];
-                  for (const productId of selectedProducts) {
-                    const product = urunler.find(u => u.id === productId);
-                    if (product) {
-                      const tempCanvas = document.createElement('canvas');
-                      const ctx = tempCanvas.getContext('2d');
-                      if (ctx) {
-                        try {
-                          const JsBarcode = await import('jsbarcode');
-                          JsBarcode.default(tempCanvas, product.barkod, {
-                            format: 'CODE128',
-                            width: 2,
-                            height: 50,
-                            displayValue: true,
-                            text: product.barkod,
-                            fontSize: 16,
-                            margin: 10,
-                          });
-                          
-                          barkodImages.push({
-                            image: tempCanvas.toDataURL('image/png'),
-                            ad: product.ad,
-                            model: product.model
-                          });
-                        } catch (error) {
-                          console.error('Barkod oluşturma hatası:', error);
-                        }
-                      }
-                    }
-                  }
-
-                  // Yazdırma penceresini oluştur (50x30 mm x 2 kolon grid)
-                  const labelsHTML = barkodImages.map(item => `
-                    <div class="label">
-                      ${item.ad ? `<div class='urun-bilgi'>${item.ad}</div>` : ''}
-                      ${item.model ? `<div class='urun-model'>${item.model}</div>` : ''}
-                      <img class="barcode-img" src="${item.image}" />
-                    </div>
-                  `).join('');
-
-                  printWindow.document.write(`
-                    <html>
-                      <head>
-                        <title>Barkodları Yazdır</title>
-                        <style>
-                          @page { margin: 2mm; }
-                          body { margin: 0; padding: 0; font-family: Arial, sans-serif; width: 110mm; }
-
-                          .sheet {
-                            display: flex;
-                            flex-wrap: wrap;                 /* yan yana ikişer, alt satıra geç */
-                            width: 110mm;                    /* 2 x 50mm */
-                            margin: 0;
-                            gap: 9mm;                          /* bitişik */
-                            box-sizing: border-box;
-                            page-break-inside: avoid; break-inside: avoid;
-                          }
-
-                          .label {
-                            width: 50mm;
-                            height: 30mm;
-                            box-sizing: border-box;
-                            display: inline-flex;            /* inline-block benzeri, satır dolunca alta geçsin */
-                            flex-direction: column;
-                            justify-content: center;
-                            align-items: center;
-                            overflow: hidden;
-                            padding: 0; margin: 0;
-                            page-break-inside: avoid; break-inside: avoid;
-                          }
-
-                          .urun-bilgi { font-size: 15px; font-weight: 700; margin: 1.5mm 0 1mm; text-align: center; line-height: 1.1; }
-                          .urun-model { font-size: 10px; color: #000; margin: 0 0 1.5mm; text-align: center; line-height: 1.1; }
-                          .barcode-img { width: 48mm; height: auto; max-height: 18mm; }
-                        </style>
-                      </head>
-                      <body>
-                        <div class="sheet">${labelsHTML}</div>
-                        <script>
-                          window.addEventListener('load', () => {
-                            window.print();
-                            setTimeout(() => window.close(), 300);
-                          });
-                        </script>
-                      </body>
-                    </html>
-                  `);
-                  printWindow.document.close();
-                  
-                  setShowBulkBarcodeModal(false);
-                  setSelectedProducts([]);
-                }}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded flex items-center"
-              >
-                <Printer className="h-5 w-5 mr-2" />
-                Tümünü Yazdır
-              </button>
             </div>
           </div>
         </div>

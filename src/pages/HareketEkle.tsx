@@ -10,6 +10,15 @@ const HareketEkle = () => {
   const { urunler, addHareket } = useEnvanter();
   const { user } = useAuth();
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
+  const desiredLocationsOrder = [
+    'Depo',
+    'Limak Deluxe',
+    'Kaya Artemis',
+    'Kaya Palazzo',
+    'Les Ambassadeurs',
+    'Lords Palace',
+    'Dış Kiralama'
+  ];
   
   const [formData, setFormData] = useState({
     urunId: '',
@@ -160,7 +169,10 @@ const HareketEkle = () => {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
               <option value="">Lokasyon Seçin</option>
-              {locations.map(loc => (
+              {desiredLocationsOrder
+                .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()))
+                .filter((l): l is {id: string, name: string} => Boolean(l))
+                .map(loc => (
                 <option key={loc.id} value={loc.id}>
                   {loc.name}
                 </option>

@@ -14,18 +14,15 @@ const Anasayfa = () => {
   // Raporlar kartları için eklenen state'ler
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
-  const [locationNames, setLocationNames] = useState({
-    depo: 'DEPO',
-    organizasyon: 'ORGANİZASYON',
-    servis: 'SERVİS',
-    kiralama: 'KİRALAMA'
-  });
-  const [locationIds, setLocationIds] = useState({
-    depo: '',
-    organizasyon: '',
-    servis: '',
-    kiralama: ''
-  });
+  const desiredLocationsOrder = [
+    'Depo',
+    'Limak Deluxe',
+    'Kaya Artemis',
+    'Kaya Palazzo',
+    'Les Ambassadeurs',
+    'Lords Palace',
+    'Dış Kiralama'
+  ];
 
   useEffect(() => {
     setIsLoaded(true);
@@ -35,22 +32,6 @@ const Anasayfa = () => {
         .select('id, name');
       if (error) return;
       setLocations(locationsData || []);
-      const depoObj = locationsData.find(l => l.name.toUpperCase() === 'DEPO');
-      const organizasyonObj = locationsData.find(l => l.name.toUpperCase() === 'ORGANİZASYON');
-      const servisObj = locationsData.find(l => l.name.toUpperCase() === 'SERVİS');
-      const kiralamaObj = locationsData.find(l => l.name.toUpperCase() === 'KİRALAMA');
-      setLocationNames({
-        depo: depoObj?.name || 'DEPO',
-        organizasyon: organizasyonObj?.name || 'ORGANİZASYON',
-        servis: servisObj?.name || 'SERVİS',
-        kiralama: kiralamaObj?.name || 'KİRALAMA'
-      });
-      setLocationIds({
-        depo: depoObj?.id || '',
-        organizasyon: organizasyonObj?.id || '',
-        servis: servisObj?.id || '',
-        kiralama: kiralamaObj?.id || ''
-      });
     };
 
     const fetchUsers = async () => {
@@ -67,11 +48,15 @@ const Anasayfa = () => {
 
   // Toplam ürün sayısı
   const toplamUrun = urunler.length;
-  // Her lokasyondaki ürün sayısı (location_id alanına göre)
-  const depodaUrun = urunler.filter(u => u.durum === 'Depoda').length;
-  const organizasyonUrun = urunler.filter(u => u.location_id === locationIds.organizasyon).length;
-  const servisteUrun = urunler.filter(u => u.location_id === locationIds.servis).length;
-  const kiradaUrun = urunler.filter(u => u.location_id === locationIds.kiralama).length;
+  const getCountForLocation = (locName: string, locId: string) => {
+    if ((locName || '').toLowerCase() === 'depo') {
+      return urunler.filter(u => u.durum === 'Depoda').length;
+    }
+    return urunler.filter(u => u.location_id === locId).length;
+  };
+  const orderedLocations = desiredLocationsOrder
+    .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()) || { id: '', name })
+    .filter(l => l.name);
 
   // Son hareketler
   const sonHareketler = hareketler.slice(0, 5);
@@ -116,26 +101,13 @@ const Anasayfa = () => {
 
       {/* Raporlar kartları */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
-          <Package className="h-8 w-8 text-indigo-500 mb-2" />
-          <div className="text-lg font-semibold text-gray-700">DEPO</div>
-          <div className="text-3xl font-bold text-indigo-700 mt-1">{depodaUrun}</div>
-        </div>
-        <div className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
-          <Warehouse className="h-8 w-8 text-green-500 mb-2" />
-          <div className="text-lg font-semibold text-gray-700">ORGANİZASYON</div>
-          <div className="text-3xl font-bold text-green-700 mt-1">{organizasyonUrun}</div>
-        </div>
-        <div className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
-          <RefreshCw className="h-8 w-8 text-yellow-500 mb-2" />
-          <div className="text-lg font-semibold text-gray-700">{locationNames.servis}</div>
-          <div className="text-3xl font-bold text-yellow-700 mt-1">{servisteUrun}</div>
-        </div>
-        <div className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
-          <Package className="h-8 w-8 text-pink-500 mb-2" />
-          <div className="text-lg font-semibold text-gray-700">{locationNames.kiralama}</div>
-          <div className="text-3xl font-bold text-pink-700 mt-1">{kiradaUrun}</div>
-        </div>
+        {orderedLocations.map((loc) => (
+          <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
+            <Warehouse className="h-8 w-8 text-green-500 mb-2" />
+            <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
+            <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
+          </div>
+        ))}
       </div>
 
       {/* İstatistik Kartları */}

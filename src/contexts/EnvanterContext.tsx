@@ -61,7 +61,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [urunler, setUrunler] = useState<Urun[]>([]);
   const [hareketler, setHareketler] = useState<Hareket[]>([]);
   const [kategoriler, setKategoriler] = useState<Kategori[]>([]);
-  const [isAdmin, setIsAdmin] = useState(true);
+  const isAdmin = user?.role === 'admin';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -180,7 +180,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addUrun = useCallback(async (urun: Urun) => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('products')
         .insert([{
           name: urun.ad,
@@ -194,8 +194,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           barcode: urun.barkod,
           quantity: urun.miktar
         }])
-        .select()
-        .single();
+        ;
 
       if (error) throw error;
 
@@ -314,6 +313,9 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           })
           .eq('id', urun.id);
       }
+
+      // Ürün ve hareket listelerini tazele (sayfalar anında doğru sayı göstersin)
+      await Promise.all([loadProducts(), loadMovements()]);
     } catch (error) {
       console.error('Hareket güncelleme hatası:', error);
       throw error;
@@ -396,6 +398,9 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           throw new Error(`Ürün güncelleme hatası: ${updateError.message}`);
         }
       }
+
+      // Ürün ve hareket listelerini tazele
+      await Promise.all([loadProducts(), loadMovements()]);
     } catch (error) {
       console.error('Hareket ekleme hatası:', error);
       throw error;
@@ -443,6 +448,9 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           })
           .eq('id', urun.id);
       }
+
+      // Ürün ve hareket listelerini tazele
+      await Promise.all([loadProducts(), loadMovements()]);
     } catch (error) {
       console.error('Hareket silme hatası:', error);
       throw error;
@@ -504,6 +512,9 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             .eq('id', urunId);
         }
       }
+
+      // Ürün ve hareket listelerini tazele
+      await Promise.all([loadProducts(), loadMovements()]);
     } catch (error) {
       console.error('Toplu hareket silme hatası:', error);
       throw error;
@@ -512,13 +523,12 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addKategori = async (kategori: Kategori) => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('categories')
         .insert([{
           name: kategori.name
         }])
-        .select()
-        .single();
+        ;
 
       if (error) throw error;
 
