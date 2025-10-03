@@ -610,24 +610,28 @@ const Hareketler = () => {
               </button>
             </div>
           )}
-          <button
-            onClick={openBulkBarcodeModal}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
-          >
-            <Camera className="h-5 w-5 mr-2" />
-            Toplu Barkod Gir
-          </button>
-          <button
-            onClick={openBarcodeModal}
-            className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
-          >
-            <Scan className="h-5 w-5 mr-2" />
-            Barkod Ara
-          </button>
-          <Link to="/app/hareketler/ekle" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center">
-            <Plus className="h-5 w-5 mr-2" />
-            Yeni Hareket
-          </Link>
+          {isAdmin && (
+            <>
+              <button
+                onClick={openBulkBarcodeModal}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+              >
+                <Camera className="h-5 w-5 mr-2" />
+                Toplu Barkod Gir
+              </button>
+              <button
+                onClick={openBarcodeModal}
+                className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
+              >
+                <Scan className="h-5 w-5 mr-2" />
+                Barkod Ara
+              </button>
+              <Link to="/app/hareketler/ekle" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <Plus className="h-5 w-5 mr-2" />
+                Yeni Hareket
+              </Link>
+            </>
+          )}
         </div>
       </div>
       
