@@ -21,7 +21,8 @@ const Anasayfa = () => {
     'Kaya Palazzo',
     'Les Ambassadeurs',
     'Lords Palace',
-    'Dış Kiralama'
+    'Dış Kiralama',
+    'Servis'
   ];
 
   useEffect(() => {
@@ -102,11 +103,19 @@ const Anasayfa = () => {
       {/* Raporlar kartları */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {orderedLocations.map((loc) => (
-          <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
-            <Warehouse className="h-8 w-8 text-green-500 mb-2" />
-            <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
-            <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
-          </div>
+          loc.id ? (
+            <Link key={loc.id} to={`/app/hareketler?lokasyon=${loc.id}`} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center hover:shadow-md transition-all">
+              <Warehouse className="h-8 w-8 text-green-500 mb-2" />
+              <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
+              <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
+            </Link>
+          ) : (
+            <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center opacity-70">
+              <Warehouse className="h-8 w-8 text-green-500 mb-2" />
+              <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
+              <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
+            </div>
+          )
         ))}
       </div>
 

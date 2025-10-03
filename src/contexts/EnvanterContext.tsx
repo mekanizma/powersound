@@ -138,7 +138,24 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         throw new Error('Kategoriler yüklenirken bir hata oluştu');
       }
 
-      setKategoriler(data || []);
+      let categories = data || [];
+      const hasOther = categories.some(
+        (c: any) => String(c.name || '').toLowerCase() === 'diğer' || String(c.name || '').toLowerCase() === 'diger'
+      );
+
+      if (!hasOther) {
+        const { data: inserted, error: insertError } = await supabase
+          .from('categories')
+          .insert([{ name: 'Diğer' }])
+          .select('id, name')
+          .single();
+
+        if (!insertError && inserted) {
+          categories = [...categories, inserted];
+        }
+      }
+
+      setKategoriler(categories);
     } catch (error) {
       console.error('Kategori yükleme hatası:', error);
       throw error;
@@ -296,10 +313,25 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const yeniMiktar = urun.miktar + toplamEtki;
         // Lokasyon değişikliği varsa uygula
         const yeniLokasyon = updatedHareket.lokasyon || urun.location_id;
+        // Lokasyona göre durum belirle
+        let yeniDurum: string = 'Depoda';
+        try {
+          const { data: locData } = await supabase
+            .from('locations')
+            .select('name')
+            .eq('id', yeniLokasyon)
+            .single();
+          const locName = String(locData?.name || '').trim();
+          if (locName) {
+            if (locName.toLowerCase() === 'depo') yeniDurum = 'Depoda';
+            else if (locName.toLowerCase() === 'servis') yeniDurum = 'Serviste';
+            else yeniDurum = locName;
+          }
+        } catch {}
         setUrunler(prevUrunler =>
           prevUrunler.map(u =>
             u.id === urun.id
-              ? { ...u, miktar: yeniMiktar, location_id: yeniLokasyon, lokasyon: yeniLokasyon }
+              ? { ...u, miktar: yeniMiktar, location_id: yeniLokasyon, lokasyon: yeniLokasyon, durum: yeniDurum }
               : u
           )
         );
@@ -309,7 +341,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           .update({ 
             quantity: yeniMiktar,
             location_id: yeniLokasyon,
-            status: yeniMiktar > 0 ? 'Depoda' : 'Tükenmiş'
+            status: yeniDurum
           })
           .eq('id', urun.id);
       }
@@ -325,6 +357,22 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addHareket = async (hareket: Hareket) => {
     try {
       console.log('Hareket ekleniyor:', hareket);
+      // İş kuralı: Aynı üründe ardışık Çıkış yapılamaz. En son hareket Çıkış ise, yeni Çıkış reddedilir.
+      if (hareket.tip === 'Çıkış') {
+        const { data: lastMovements, error: lastErr } = await supabase
+          .from('movements')
+          .select('type, created_at')
+          .eq('product_id', hareket.urunId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!lastErr && lastMovements && lastMovements.length > 0) {
+          const lastType = lastMovements[0].type;
+          if (String(lastType) === 'Çıkış') {
+            throw new Error('Bu ürün için en son işlem Çıkış. Tekrar çıkış yapamazsınız. Lütfen önce Giriş işlemi yapın.');
+          }
+        }
+      }
       
       const { data, error } = await supabase
         .from('movements')
@@ -370,12 +418,27 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         // Miktar negatif olamaz, minimum 0 olmalı
         const finalMiktar = Math.max(0, yeniMiktar);
+        // Lokasyona göre durum belirle
+        let yeniDurum: string = 'Depoda';
+        try {
+          const { data: locData } = await supabase
+            .from('locations')
+            .select('name')
+            .eq('id', hareket.lokasyon)
+            .single();
+          const locName = String(locData?.name || '').trim();
+          if (locName) {
+            if (locName.toLowerCase() === 'depo') yeniDurum = 'Depoda';
+            else if (locName.toLowerCase() === 'servis') yeniDurum = 'Serviste';
+            else yeniDurum = locName;
+          }
+        } catch {}
         
         // Ürünü güncelle (miktar ve lokasyon)
         setUrunler(prevUrunler =>
           prevUrunler.map(u =>
             u.id === urun.id
-              ? { ...u, miktar: finalMiktar, location_id: hareket.lokasyon, lokasyon: hareket.lokasyon }
+              ? { ...u, miktar: finalMiktar, location_id: hareket.lokasyon, lokasyon: hareket.lokasyon, durum: yeniDurum }
               : u
           )
         );
@@ -388,7 +451,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           .from('products')
           .update({ 
             quantity: dbMiktar,
-            status: finalMiktar > 0 ? 'Depoda' : 'Tükenmiş',
+            status: yeniDurum,
             location_id: hareket.lokasyon
           })
           .eq('id', urun.id);

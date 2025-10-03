@@ -239,16 +239,7 @@ const Depo = () => {
     setShowEditModal(true);
   };
 
-  const formatDateTime = (isoString: string) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    const hour = String(date.getHours()).padStart(2, '0');
-    const minute = String(date.getMinutes()).padStart(2, '0');
-    return `${day}.${month}.${year} ${hour}:${minute}`;
-  };
+  
 
   const formatDateTimeForExcel = (isoString: string) => {
     if (!isoString) return '';
@@ -494,18 +485,8 @@ const Depo = () => {
                 >
                   Durum
                 </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Miktar
-                </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
-                  Son İşlem
-                </th>
+                
+                
                 <th
                   scope="col"
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -559,25 +540,25 @@ const Depo = () => {
                       {urun.durum}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {urun.miktar}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {formatDateTime(urun.eklemeTarihi)}
-                  </td>
+                  
+                  
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => openEditModal(urun)}
-                      className="text-indigo-600 hover:text-indigo-900 mr-5"
-                    >
-                      Düzenle
-                    </button>
-                    <button
-                      onClick={() => handleDelete(urun)}
-                      className="text-red-600 hover:text-red-900"
-                    >
-                      Sil
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => openEditModal(urun)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-5"
+                        >
+                          Düzenle
+                        </button>
+                        <button
+                          onClick={() => handleDelete(urun)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Sil
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

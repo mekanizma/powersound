@@ -17,7 +17,8 @@ const Raporlar = () => {
     'Kaya Palazzo',
     'Les Ambassadeurs',
     'Lords Palace',
-    'Dış Kiralama'
+    'Dış Kiralama',
+    'Servis'
   ];
   
   // Filtreleme state'leri

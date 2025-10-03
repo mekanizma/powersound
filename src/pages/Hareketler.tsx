@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Filter, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, List, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -11,11 +11,12 @@ import BarcodeScanner from '../components/BarcodeScanner';
 const Hareketler = () => {
   const { hareketler, urunler, removeHareket, addHareket, updateHareket, removeHareketler } = useEnvanter();
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
-  const [sortBy, setSortBy] = useState('tarih');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortBy] = useState('tarih');
+  const [sortDir] = useState<'asc' | 'desc'>('desc');
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
@@ -49,7 +50,8 @@ const Hareketler = () => {
     'Kaya Palazzo',
     'Les Ambassadeurs',
     'Lords Palace',
-    'Dış Kiralama'
+    'Dış Kiralama',
+    'Servis'
   ];
   const orderedLocations = desiredLocationsOrder
     .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()))
@@ -59,16 +61,19 @@ const Hareketler = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [selectedMovements, setSelectedMovements] = useState<string[]>([]);
+  const [locationPages, setLocationPages] = useState<Record<string, number>>({});
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingMovement, setEditingMovement] = useState<any>(null);
   const [editMovementType, setEditMovementType] = useState<'Giriş' | 'Çıkış'>('Çıkış');
   const [editMovementQuantity, setEditMovementQuantity] = useState(1);
   const [editMovementLocation, setEditMovementLocation] = useState('');
   const [editMovementDescription, setEditMovementDescription] = useState('');
+  const [bulkEditIds, setBulkEditIds] = useState<string[]>([]);
   const [deleteModalMovement, setDeleteModalMovement] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
+  const routerLocation = useLocation();
   
   // Fetch locations and users from Supabase
   useEffect(() => {
@@ -101,6 +106,16 @@ const Hareketler = () => {
     fetchData();
   }, []);
 
+  // URL lokasyon parametresine göre başlangıç filtresi ve klasörü aç
+  useEffect(() => {
+    const params = new URLSearchParams(routerLocation.search);
+    const locParam = params.get('lokasyon');
+    if (locParam) {
+      setSelectedLocation(String(locParam));
+      setCollapsedLocations(prev => ({ ...prev, [String(locParam)]: false }));
+    }
+  }, [routerLocation.search]);
+
   // Helper functions to get names
   const getLocationName = (locationId: string) => {
     const location = locations.find(loc => loc.id === locationId);
@@ -110,6 +125,11 @@ const Hareketler = () => {
   const getUrunAdi = (urunId: string) => {
     const urun = urunler.find(u => String(u.id) === String(urunId));
     return urun ? urun.ad : urunId;
+  };
+
+  const getUrunBarkod = (urunId: string) => {
+    const urun = urunler.find(u => String(u.id) === String(urunId));
+    return urun ? (urun.barkod || '-') : '-';
   };
 
   const getUserName = (userId: string) => {
@@ -122,8 +142,8 @@ const Hareketler = () => {
     const matchesSearch = hareket.urunAdi.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           hareket.aciklama.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = selectedType ? hareket.tip === selectedType : true;
-    const matchesLocation = selectedLocation ? String(hareket.lokasyon) === String(selectedLocation) : true;
-    return matchesSearch && matchesType && matchesLocation;
+    // Lokasyon filtresi burada uygulanmaz; son hareket lokasyonuna göre klasör bazında filtrelenecek
+    return matchesSearch && matchesType;
   });
   
   // Sıralama
@@ -154,18 +174,37 @@ const Hareketler = () => {
     return 0;
   });
   
-  // Sütuna göre sıralama
-  const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(column);
-      setSortDir('asc');
+  // Sütuna göre sıralama (kullanılmıyor)
+
+  // Tarih parse yardımcı fonksiyonu
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return new Date(0);
+    if (dateStr.includes('T')) return new Date(dateStr);
+    if (dateStr.includes('.')) {
+      const [dd, mm, yyyyAndRest] = dateStr.split('.');
+      const yyyy = (yyyyAndRest?.split(' ')[0]) || yyyyAndRest;
+      return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
     }
+    return new Date(dateStr);
   };
 
-  // Lokasyona göre gruplama
-  const locationIdSetFromMovements = Array.from(new Set(sortedHareketler.map(h => String(h.lokasyon))));
+  // Her ürün için yalnızca SON hareketi (tarihsel olarak en yeni) seç - filtrelerden sonra
+  const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
+  for (const hareket of filteredHareketler) {
+    const key = String(hareket.urunId);
+    const existing = latestByProduct.get(key);
+    if (!existing) {
+      latestByProduct.set(key, hareket);
+    } else {
+      const tNew = parseDate(hareket.tarih).getTime();
+      const tOld = parseDate(existing.tarih).getTime();
+      if (tNew > tOld) latestByProduct.set(key, hareket);
+    }
+  }
+  const latestMovements = Array.from(latestByProduct.values());
+
+  // Lokasyona göre gruplama (yalnızca son hareketler)
+  const locationIdSetFromMovements = Array.from(new Set(latestMovements.map(h => String(h.lokasyon))));
   const notInDesired = locations.filter(l => !desiredLocationsOrder.some(name => (l.name || '').toLowerCase() === name.toLowerCase()));
   const additionalLocationsFromData = locationIdSetFromMovements
     .filter(id => !locations.find(l => String(l.id) === String(id)))
@@ -176,13 +215,50 @@ const Hareketler = () => {
     ...additionalLocationsFromData
   ].filter((loc, index, self) => self.findIndex(l => String(l.id) === String(loc.id)) === index);
 
-  const groupedMovements: Record<string, typeof sortedHareketler> = displayLocations.reduce((acc, loc) => {
-    acc[loc.id] = sortedHareketler.filter(h => String(h.lokasyon) === String(loc.id));
+  const groupedMovements: Record<string, typeof latestMovements> = displayLocations.reduce((acc, loc) => {
+    const list = latestMovements.filter(h => String(h.lokasyon) === String(loc.id));
+    acc[loc.id] = selectedLocation ? (String(loc.id) === String(selectedLocation) ? list : []) : list;
     return acc;
-  }, {} as Record<string, typeof sortedHareketler>);
+  }, {} as Record<string, typeof latestMovements>);
 
   const toggleLocationCollapse = (locId: string) => {
     setCollapsedLocations(prev => ({ ...prev, [locId]: !prev[locId] }));
+  };
+
+  // Klasör bazında tüm hareketler seçili mi?
+  const areAllMovementsSelectedForLocation = (locId: string) => {
+    const movements = groupedMovements[locId] || [];
+    if (movements.length === 0) return false;
+    return movements.every(m => selectedMovements.includes(m.id));
+  };
+
+  // Klasördeki tüm hareketleri seç/kaldır
+  const toggleSelectAllForLocation = (locId: string) => {
+    const movements = groupedMovements[locId] || [];
+    const ids = movements.map(m => m.id);
+    setSelectedMovements(prev => {
+      const allSelected = ids.every(id => prev.includes(id));
+      if (allSelected) {
+        return prev.filter(id => !ids.includes(id));
+      }
+      const merged = new Set(prev);
+      ids.forEach(id => merged.add(id));
+      return Array.from(merged);
+    });
+  };
+
+  const openBulkEditForLocation = (locId: string) => {
+    const movements = groupedMovements[locId] || [];
+    const ids = movements.map(m => m.id);
+    if (!ids.length) return;
+    setBulkEditIds(ids);
+    const first = movements[0];
+    setEditingMovement(first);
+    setEditMovementType(first.tip as 'Giriş' | 'Çıkış');
+    setEditMovementQuantity(first.miktar);
+    setEditMovementLocation(first.lokasyon);
+    setEditMovementDescription('');
+    setShowEditModal(true);
   };
 
   const formatDateTime = (isoString: string) => {
@@ -217,13 +293,27 @@ const Hareketler = () => {
     setBarcodeMovementDescription('');
   };
 
-  const handleBarcodeInput = (value: string) => {
+  const handleBarcodeInput = async (value: string) => {
     setBarcodeInput(value);
     if (value.length > 0) {
       const found = urunler.find(u => u.barkod === value);
       if (found) {
         setBarcodeProduct(found);
         setBarcodeError('');
+        try {
+          const { data: lastMovements, error: lastErr } = await supabase
+            .from('movements')
+            .select('location_id, created_at')
+            .eq('product_id', found.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          if (!lastErr && lastMovements && lastMovements.length > 0) {
+            const lastLoc = lastMovements[0].location_id as string;
+            if (lastLoc) setBarcodeMovementLocation(String(lastLoc));
+          }
+        } catch (e) {
+          // sessiz geç
+        }
       } else {
         setBarcodeProduct(null);
         setBarcodeError('Barkod ile eşleşen ürün bulunamadı!');
@@ -406,6 +496,13 @@ const Hareketler = () => {
     goToPage(currentPage + 1);
   };
 
+  // Lokasyon bazlı sayfalama yardımcıları
+  const getLocationPage = (locId: string) => locationPages[locId] || 1;
+  const setLocationPage = (locId: string, page: number, total: number) => {
+    const clamped = Math.max(1, Math.min(page, total));
+    setLocationPages(prev => ({ ...prev, [locId]: clamped }));
+  };
+
   // Hareket seçme işlemleri
   const toggleMovementSelection = (movementId: string) => {
     setSelectedMovements(prev => 
@@ -415,16 +512,13 @@ const Hareketler = () => {
     );
   };
 
-  const selectAllMovements = () => {
-    setSelectedMovements(filteredHareketler.map(m => m.id));
-  };
+  // selectAllMovements (kullanılmıyor)
 
-  const deselectAllMovements = () => {
-    setSelectedMovements([]);
-  };
+  // deselectAllMovements (kullanılmıyor)
 
   // Hareket düzenleme işlemleri
   const openEditModal = (movement: any) => {
+    setBulkEditIds([]);
     setEditingMovement(movement);
     setEditMovementType(movement.tip as 'Giriş' | 'Çıkış');
     setEditMovementQuantity(movement.miktar);
@@ -436,20 +530,23 @@ const Hareketler = () => {
   const closeEditModal = () => {
     setShowEditModal(false);
     setEditingMovement(null);
+    setBulkEditIds([]);
   };
 
   const handleEditMovement = async () => {
-    if (!editingMovement) return;
+    if (!editingMovement && bulkEditIds.length === 0) return;
     try {
-      await updateHareket(editingMovement.id, {
-        tip: editMovementType,
-        miktar: editMovementQuantity,
-        lokasyon: editMovementLocation,
-        aciklama: editMovementDescription
-      });
-      
+      const targetIds = bulkEditIds.length ? bulkEditIds : [editingMovement.id];
+      for (const id of targetIds) {
+        await updateHareket(id, {
+          tip: editMovementType,
+          miktar: editMovementQuantity,
+          lokasyon: editMovementLocation,
+          aciklama: editMovementDescription
+        });
+      }
       closeEditModal();
-      alert('Hareket başarıyla güncellendi!');
+      alert(bulkEditIds.length ? `${targetIds.length} hareket güncellendi!` : 'Hareket başarıyla güncellendi!');
     } catch (error) {
       alert('Hareket güncellenirken bir hata oluştu!');
     }
@@ -502,7 +599,7 @@ const Hareketler = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Hareket Kayıtları</h1>
         <div className="flex gap-2">
-          {selectedMovements.length > 0 && (
+          {isAdmin && selectedMovements.length > 0 && (
             <div className="flex gap-2 mr-4">
               <button
                 onClick={handleBulkDelete}
@@ -525,7 +622,7 @@ const Hareketler = () => {
             className="inline-flex items-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200"
           >
             <Scan className="h-5 w-5 mr-2" />
-            Tek Barkod Gir
+            Barkod Ara
           </button>
           <Link to="/app/hareketler/ekle" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center">
             <Plus className="h-5 w-5 mr-2" />
@@ -578,23 +675,7 @@ const Hareketler = () => {
           </div>
         </div>
         
-        <div className="mt-4 flex items-center justify-between">
-          <div className="flex items-center text-gray-700">
-            <Filter className="h-5 w-5 mr-2" />
-            <span className="text-sm">{filteredHareketler.length} kayıt filtrelendi</span>
-          </div>
-          
-          <button
-            onClick={() => {
-              setSearchTerm('');
-              setSelectedType('');
-              setSelectedLocation('');
-            }}
-            className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-          >
-            Filtreleri Temizle
-          </button>
-        </div>
+        
       </div>
       
       {/* Lokasyon Klasörleri */}
@@ -614,11 +695,32 @@ const Hareketler = () => {
                     <span className="font-medium text-gray-800">{loc.name}</span>
                     <span className="text-xs text-gray-500">({movements.length} kayıt)</span>
                   </div>
-                  {collapsedLocations[loc.id] ? (
-                    <ArrowDown className="h-4 w-4 text-gray-500" />
-                  ) : (
-                    <ArrowUp className="h-4 w-4 text-gray-500" />
-                  )}
+                  <div className="flex items-center gap-3">
+                    
+                    <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={areAllMovementsSelectedForLocation(loc.id)}
+                        onChange={(e) => { e.stopPropagation(); toggleSelectAllForLocation(loc.id); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      Tümünü Seç
+                    </label>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openBulkEditForLocation(loc.id); }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800"
+                      >
+                        Tümünü Düzenle
+                      </button>
+                    )}
+                    {collapsedLocations[loc.id] ? (
+                      <ArrowDown className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 text-gray-500" />
+                    )}
+                  </div>
                 </button>
                 {!collapsedLocations[loc.id] && (
                   <div className="divide-y divide-gray-100">
@@ -628,13 +730,17 @@ const Hareketler = () => {
                       <div>Ürün</div>
                       <div>Tip</div>
                       <div>Miktar</div>
-                      <div>Lokasyon</div>
+                      <div>Barkod</div>
                       <div>Açıklama</div>
                       <div>İşlemi Yapan</div>
                       <div className="text-right">İşlemler</div>
                     </div>
-
-                    {movements.length > 0 ? movements.map(hareket => (
+                    {(() => {
+                      const page = getLocationPage(loc.id);
+                      const start = (page - 1) * itemsPerPage;
+                      const end = start + itemsPerPage;
+                      const pageItems = movements.slice(start, end);
+                      return pageItems.length > 0 ? pageItems.map(hareket => (
                       <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
                         <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
                         <div className="text-sm font-medium text-gray-900 truncate">{getUrunAdi(hareket.urunId)}</div>
@@ -644,7 +750,7 @@ const Hareketler = () => {
                           </span>
                         </div>
                         <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
-                        <div className="text-sm text-gray-700">{getLocationName(hareket.lokasyon)}</div>
+                        <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
                         <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
                         <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
                         <div className="flex items-center justify-between md:justify-end gap-3">
@@ -663,22 +769,52 @@ const Hareketler = () => {
                             onChange={() => toggleMovementSelection(hareket.id)}
                             className="hidden md:block h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                           />
+                          {isAdmin && (
+                            <>
+                              <button
+                                onClick={() => openEditModal(hareket)}
+                                className="text-indigo-600 hover:text-indigo-900 text-sm"
+                              >
+                                Düzenle
+                              </button>
+                              <button
+                                onClick={() => handleDelete(hareket)}
+                                className="text-red-600 hover:text-red-900 text-sm"
+                              >
+                                Sil
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      )) : (
+                        <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
+                      );
+                    })()}
+
+                    {/* Lokasyon içi sayfalama kontrolü */}
+                    {movements.length > itemsPerPage && (
+                      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
+                        <div className="text-sm text-gray-700">
+                          Sayfa {getLocationPage(loc.id)} / {Math.ceil(movements.length / itemsPerPage)}
+                        </div>
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={() => openEditModal(hareket)}
-                            className="text-indigo-600 hover:text-indigo-900 text-sm"
+                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) - 1, Math.ceil(movements.length / itemsPerPage))}
+                            disabled={getLocationPage(loc.id) === 1}
+                            className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Düzenle
+                            <ChevronLeft className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(hareket)}
-                            className="text-red-600 hover:text-red-900 text-sm"
+                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) + 1, Math.ceil(movements.length / itemsPerPage))}
+                            disabled={getLocationPage(loc.id) === Math.ceil(movements.length / itemsPerPage)}
+                            className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            Sil
+                            <ChevronRight className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
-                    )) : (
-                      <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
                     )}
                   </div>
                 )}
@@ -719,7 +855,7 @@ const Hareketler = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Barkod Gir</h3>
+              <h3 className="text-lg font-medium text-gray-900">Barkod Ara</h3>
               <button
                 onClick={closeBarcodeModal}
                 className="text-gray-400 hover:text-gray-500"
@@ -1064,19 +1200,43 @@ const Hareketler = () => {
               </button>
             </div>
 
-            {/* Ürün Bilgisi */}
+            {/* Ürün Bilgisi / Toplu Bilgi */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                  <RefreshCw className="h-5 w-5 text-indigo-600" />
+              {bulkEditIds.length > 0 ? (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                        <RefreshCw className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-gray-900">Toplu Düzenleme</h3>
+                        <p className="text-sm text-gray-500">{bulkEditIds.length} hareket seçili</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2 bg-white">
+                    {(hareketler.filter(h => bulkEditIds.includes(h.id))).map(h => (
+                      <div key={h.id} className="text-xs text-gray-700 py-1 flex items-center justify-between">
+                        <span className="truncate mr-2">{getUrunAdi(h.urunId)}</span>
+                        <span className="text-gray-400">{h.miktar} adet • {h.tip}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-gray-900">{getUrunAdi(editingMovement.urunId)}</h3>
-                  <p className="text-sm text-gray-500">
-                    {editingMovement.tip} • {editingMovement.miktar} adet
-                  </p>
+              ) : (
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                    <RefreshCw className="h-5 w-5 text-indigo-600" />
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-gray-900">{getUrunAdi(editingMovement.urunId)}</h3>
+                    <p className="text-sm text-gray-500">
+                      {editingMovement.tip} • {editingMovement.miktar} adet
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <form onSubmit={(e) => { e.preventDefault(); handleEditMovement(); }} className="space-y-4">
