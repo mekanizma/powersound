@@ -177,17 +177,21 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .select('id, name');
       const productMap = new Map((currentProducts.data || []).map((p: any) => [String(p.id), p.name]));
 
-      const mapped = (data || []).map(item => ({
-        id: item.id,
-        urunId: item.product_id,
-        urunAdi: productMap.get(String(item.product_id)) || '',
-        tip: item.type,
-        miktar: item.quantity,
-        aciklama: item.description,
-        lokasyon: item.location_id,
-        tarih: item.created_at,
-        kullanici: item.user_id,
-      }));
+      const mapped = (data || []).map(item => {
+        const urunAdi = productMap.get(String(item.product_id)) || '';
+        // Eğer ürün adı bulunamazsa sessizce geç (kullanıcı "Bilinmeyen Ürün" görecek)
+        return {
+          id: item.id,
+          urunId: item.product_id,
+          urunAdi: urunAdi,
+          tip: item.type,
+          miktar: item.quantity,
+          aciklama: item.description,
+          lokasyon: item.location_id,
+          tarih: item.created_at,
+          kullanici: item.user_id,
+        };
+      });
 
       setHareketler(mapped);
     } catch (error) {

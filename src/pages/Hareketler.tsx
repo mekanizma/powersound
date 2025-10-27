@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder, Clock } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -73,7 +73,20 @@ const Hareketler = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
+  const [showOrphanMovements, setShowOrphanMovements] = useState(false);
+  const [showOnlyLatest, setShowOnlyLatest] = useState(true); // Sadece son hareketi göster
   const routerLocation = useLocation();
+
+  // Eksik ürünleri analiz et
+  useEffect(() => {
+    const orphanMovements = hareketler.filter(h => {
+      const urunAdi = h.urunAdi || getUrunAdi(h.urunId) || '';
+      return !isValidProductName(urunAdi);
+    });
+    if (orphanMovements.length > 0) {
+      console.log(`⚠️ ${orphanMovements.length} hareket kaydında ürün bulunamadı:`, orphanMovements);
+    }
+  }, [hareketler, urunler]);
   
   // Fetch locations and users from Supabase
   useEffect(() => {
@@ -124,7 +137,15 @@ const Hareketler = () => {
 
   const getUrunAdi = (urunId: string) => {
     const urun = urunler.find(u => String(u.id) === String(urunId));
-    return urun ? urun.ad : urunId;
+    return urun ? urun.ad : '';
+  };
+
+  // UUID kontrolü için yardımcı fonksiyon
+  const isValidProductName = (name: string): boolean => {
+    if (!name) return false;
+    // UUID formatı kontrolü: 8-4-4-4-12 karakterlik hex string
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return !uuidPattern.test(name);
   };
 
   const getUrunBarkod = (urunId: string) => {
@@ -139,9 +160,17 @@ const Hareketler = () => {
   
   // Filtreleme
   const filteredHareketler = hareketler.filter((hareket) => {
-    const matchesSearch = hareket.urunAdi.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          hareket.aciklama.toLowerCase().includes(searchTerm.toLowerCase());
+    const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
+    const matchesSearch = urunAdi.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (hareket.aciklama || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = selectedType ? hareket.tip === selectedType : true;
+    
+    // Hatalı hareket filtresi
+    if (showOrphanMovements) {
+      const isOrphan = !isValidProductName(urunAdi);
+      return isOrphan && matchesSearch && matchesType;
+    }
+    
     // Lokasyon filtresi burada uygulanmaz; son hareket lokasyonuna göre klasör bazında filtrelenecek
     return matchesSearch && matchesType;
   });
@@ -155,9 +184,11 @@ const Hareketler = () => {
         ? dateA.localeCompare(dateB) 
         : dateB.localeCompare(dateA);
     } else if (sortBy === 'urunAdi') {
+      const adA = a.urunAdi || getUrunAdi(a.urunId) || '';
+      const adB = b.urunAdi || getUrunAdi(b.urunId) || '';
       return sortDir === 'asc'
-        ? a.urunAdi.localeCompare(b.urunAdi)
-        : b.urunAdi.localeCompare(a.urunAdi);
+        ? adA.localeCompare(adB)
+        : adB.localeCompare(adA);
     } else if (sortBy === 'tip') {
       return sortDir === 'asc'
         ? a.tip.localeCompare(b.tip)
@@ -176,34 +207,38 @@ const Hareketler = () => {
   
   // Sütuna göre sıralama (kullanılmıyor)
 
-  // Tarih parse yardımcı fonksiyonu
-  const parseDate = (dateStr: string) => {
-    if (!dateStr) return new Date(0);
-    if (dateStr.includes('T')) return new Date(dateStr);
-    if (dateStr.includes('.')) {
-      const [dd, mm, yyyyAndRest] = dateStr.split('.');
-      const yyyy = (yyyyAndRest?.split(' ')[0]) || yyyyAndRest;
-      return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
-    }
-    return new Date(dateStr);
-  };
+  // Tarih parse yardımcı fonksiyonu (şu an kullanılmıyor, gerektiğinde aktif edilebilir)
+  // const parseDate = (dateStr: string) => {
+  //   if (!dateStr) return new Date(0);
+  //   if (dateStr.includes('T')) return new Date(dateStr);
+  //   if (dateStr.includes('.')) {
+  //     const [dd, mm, yyyyAndRest] = dateStr.split('.');
+  //     const yyyy = (yyyyAndRest?.split(' ')[0]) || yyyyAndRest;
+  //     return new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+  //   }
+  //   return new Date(dateStr);
+  // };
 
-  // Her ürün için yalnızca SON hareketi (tarihsel olarak en yeni) seç - filtrelerden sonra
-  const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
-  for (const hareket of filteredHareketler) {
-    const key = String(hareket.urunId);
-    const existing = latestByProduct.get(key);
-    if (!existing) {
-      latestByProduct.set(key, hareket);
-    } else {
-      const tNew = parseDate(hareket.tarih).getTime();
-      const tOld = parseDate(existing.tarih).getTime();
-      if (tNew > tOld) latestByProduct.set(key, hareket);
+  // Her ürün için son hareketi göster veya tümünü göster
+  const latestMovements = showOnlyLatest ? (() => {
+    // Her ürün için sadece en son hareketi
+    const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
+    for (const hareket of filteredHareketler) {
+      const key = String(hareket.urunId);
+      const existing = latestByProduct.get(key);
+      if (!existing) {
+        latestByProduct.set(key, hareket);
+      } else {
+        // Tarih karşılaştırması
+        const tNew = new Date(hareket.tarih).getTime();
+        const tOld = new Date(existing.tarih).getTime();
+        if (tNew > tOld) latestByProduct.set(key, hareket);
+      }
     }
-  }
-  const latestMovements = Array.from(latestByProduct.values());
+    return Array.from(latestByProduct.values());
+  })() : filteredHareketler; // Tüm hareketleri göster
 
-  // Lokasyona göre gruplama (yalnızca son hareketler)
+  // Lokasyona göre gruplama
   const locationIdSetFromMovements = Array.from(new Set(latestMovements.map(h => String(h.lokasyon))));
   const notInDesired = locations.filter(l => !desiredLocationsOrder.some(name => (l.name || '').toLowerCase() === name.toLowerCase()));
   const additionalLocationsFromData = locationIdSetFromMovements
@@ -594,10 +629,46 @@ const Hareketler = () => {
     }
   };
 
+  // Hatalı hareket sayısını hesapla
+  const orphanMovementsCount = hareketler.filter(h => {
+    const urunAdi = h.urunAdi || getUrunAdi(h.urunId) || '';
+    return !isValidProductName(urunAdi);
+  }).length;
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Hareket Kayıtları</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-800">Hareket Kayıtları</h1>
+          
+          {/* Görünüm Modu: Son Hareketler / Tüm Hareketler */}
+          <button
+            onClick={() => setShowOnlyLatest(!showOnlyLatest)}
+            className={`inline-flex items-center px-4 py-2 rounded-lg transition-colors duration-200 ${
+              showOnlyLatest 
+                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200' 
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            }`}
+            title={showOnlyLatest ? 'Şu anda: Her ürün için sadece son hareket gösteriliyor' : 'Şu anda: Tüm geçmiş hareketler gösteriliyor'}
+          >
+            <Clock className="h-5 w-5 mr-2" />
+            {showOnlyLatest ? 'Son Hareketler' : 'Tüm Geçmiş'}
+          </button>
+
+          {orphanMovementsCount > 0 && (
+            <button
+              onClick={() => setShowOrphanMovements(!showOrphanMovements)}
+              className={`inline-flex items-center px-4 py-2 rounded-lg transition-colors duration-200 ${
+                showOrphanMovements 
+                  ? 'bg-red-600 text-white hover:bg-red-700' 
+                  : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+              }`}
+            >
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              {showOrphanMovements ? 'Tüm Hareketleri Göster' : `Hatalı Hareketleri Bul (${orphanMovementsCount})`}
+            </button>
+          )}
+        </div>
         <div className="flex gap-2">
           {isAdmin && selectedMovements.length > 0 && (
             <div className="flex gap-2 mr-4">
@@ -634,6 +705,41 @@ const Hareketler = () => {
           )}
         </div>
       </div>
+
+      {/* Hatalı Hareket Uyarısı */}
+      {showOrphanMovements && filteredHareketler.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-6 w-6 text-orange-600 flex-shrink-0" />
+            <div>
+              <h3 className="font-semibold text-orange-900 mb-1">Hatalı Hareketler Tespit Edildi</h3>
+              <p className="text-sm text-orange-800 mb-2">
+                Bu hareketlerde ürün bulunamadı. Büyük ihtimalle ürünler sistemden silindi. 
+                Bu hareketleri toplu olarak silebilirsiniz.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const orphanIds = hareketler
+                      .filter(h => {
+                        const urunAdi = h.urunAdi || getUrunAdi(h.urunId) || '';
+                        return !isValidProductName(urunAdi);
+                      })
+                      .map(h => h.id);
+                    setSelectedMovements(orphanIds);
+                  }}
+                  className="text-sm px-3 py-1 bg-orange-600 text-white rounded hover:bg-orange-700"
+                >
+                  Hepsini Seç
+                </button>
+                <span className="text-sm text-orange-700">
+                  {filteredHareketler.length} hatalı hareket gösteriliyor
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Filtreler */}
       <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
@@ -690,9 +796,9 @@ const Hareketler = () => {
             if (selectedLocation && String(loc.id) !== String(selectedLocation)) return null;
             return (
               <div key={loc.id} className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
-                <button
+                <div
                   onClick={() => toggleLocationCollapse(loc.id)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 text-left"
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100"
                 >
                   <div className="flex items-center gap-2">
                     <Folder className="h-5 w-5 text-gray-600" />
@@ -725,7 +831,7 @@ const Hareketler = () => {
                       <ArrowUp className="h-4 w-4 text-gray-500" />
                     )}
                   </div>
-                </button>
+                </div>
                 {!collapsedLocations[loc.id] && (
                   <div className="divide-y divide-gray-100">
                     {/* Kolon Başlıkları */}
@@ -744,10 +850,21 @@ const Hareketler = () => {
                       const start = (page - 1) * itemsPerPage;
                       const end = start + itemsPerPage;
                       const pageItems = movements.slice(start, end);
-                      return pageItems.length > 0 ? pageItems.map(hareket => (
+                      return pageItems.length > 0 ? pageItems.map(hareket => {
+                        const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
+                        const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
+                        const isOrphan = !isValidProductName(urunAdi);
+                        return (
                       <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
                         <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
-                        <div className="text-sm font-medium text-gray-900 truncate">{getUrunAdi(hareket.urunId)}</div>
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {displayName}
+                          {isOrphan && (
+                            <div className="text-xs text-red-600 mt-1 font-mono">
+                              ID: {hareket.urunId.substring(0, 12)}...
+                            </div>
+                          )}
+                        </div>
                         <div>
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                             {hareket.tip}
@@ -791,7 +908,8 @@ const Hareketler = () => {
                           )}
                         </div>
                       </div>
-                      )) : (
+                      );
+                      }) : (
                         <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
                       );
                     })()}
@@ -1222,7 +1340,7 @@ const Hareketler = () => {
                   <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2 bg-white">
                     {(hareketler.filter(h => bulkEditIds.includes(h.id))).map(h => (
                       <div key={h.id} className="text-xs text-gray-700 py-1 flex items-center justify-between">
-                        <span className="truncate mr-2">{getUrunAdi(h.urunId)}</span>
+                        <span className="truncate mr-2">{h.urunAdi || getUrunAdi(h.urunId) || 'Bilinmeyen Ürün'}</span>
                         <span className="text-gray-400">{h.miktar} adet • {h.tip}</span>
                       </div>
                     ))}
@@ -1234,7 +1352,7 @@ const Hareketler = () => {
                     <RefreshCw className="h-5 w-5 text-indigo-600" />
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-gray-900">{getUrunAdi(editingMovement.urunId)}</h3>
+                    <h3 className="text-sm font-medium text-gray-900">{editingMovement.urunAdi || getUrunAdi(editingMovement.urunId) || 'Bilinmeyen Ürün'}</h3>
                     <p className="text-sm text-gray-500">
                       {editingMovement.tip} • {editingMovement.miktar} adet
                     </p>
@@ -1343,7 +1461,7 @@ const Hareketler = () => {
               <p className="text-sm text-gray-500 mb-6">
                 {deleteModalMovement.id === 'bulk' 
                   ? `${deleteModalMovement.count} hareketi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
-                  : `"${getUrunAdi(deleteModalMovement.urunId)}" ürününün hareketini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
+                  : `"${deleteModalMovement.urunAdi || getUrunAdi(deleteModalMovement.urunId) || 'Bu Ürün'}" ürününün hareketini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`
                 }
               </p>
               

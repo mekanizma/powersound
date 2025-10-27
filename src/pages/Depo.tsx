@@ -11,7 +11,7 @@ import BarkodGenerator from '../components/BarkodGenerator';
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 const Depo = () => {
-  const { urunler, kategoriler, loadProducts } = useEnvanter();
+  const { urunler, kategoriler, loadProducts, removeUrun } = useEnvanter();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,8 +40,13 @@ const Depo = () => {
   };
 
   const filteredUrunler = depodakiUrunler.filter((urun) => {
-    const matchesSearch = urun.ad.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         urun.barkod.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      (urun.ad || '').toLowerCase().includes(searchLower) || 
+      (urun.marka || '').toLowerCase().includes(searchLower) ||
+      (urun.model || '').toLowerCase().includes(searchLower) ||
+      (urun.seriNo || '').toLowerCase().includes(searchLower) ||
+      (urun.barkod || '').toLowerCase().includes(searchLower);
     const matchesCategory = selectedCategory ? String(urun.kategori) === String(selectedCategory) : true;
     return matchesSearch && matchesCategory;
   });
@@ -109,10 +114,8 @@ const Depo = () => {
     if (!deleteModalProduct) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('products').delete().eq('id', deleteModalProduct.id);
-      if (error) throw error;
-      // Listeyi yenile (sayfayı yenilemeden)
-      await loadProducts();
+      // Context'teki removeUrun kullan - hareketlerini de siler
+      await removeUrun(deleteModalProduct.id);
       setSelectedProducts(prev => prev.filter(id => id !== deleteModalProduct.id));
       setShowDeleteModal(false);
       setDeleteModalProduct(null);
@@ -135,9 +138,10 @@ const Depo = () => {
     if (!deleteModalProduct || deleteModalProduct.id !== 'bulk') return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('products').delete().in('id', selectedProducts);
-      if (error) throw error;
-      await loadProducts();
+      // Her ürünü tek tek sil (context'teki removeUrun hareketleri de siler)
+      for (const productId of selectedProducts) {
+        await removeUrun(productId);
+      }
       setSelectedProducts([]);
       setShowDeleteModal(false);
       setDeleteModalProduct(null);

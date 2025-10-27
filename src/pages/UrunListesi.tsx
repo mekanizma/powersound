@@ -86,13 +86,21 @@ const UrunListesi = () => {
     return kategori ? kategori.name : 'Bilinmiyor';
   };
 
-  const filteredUrunler = urunler.filter((urun) => urun.durum !== 'Depoda' && (
-    urun.ad.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    urun.barkod.toLowerCase().includes(searchTerm.toLowerCase())
-  ) && (selectedCategory ? urun.kategori === selectedCategory : true)
-    && (selectedStatus ? urun.durum === selectedStatus : true)
-    && (selectedLocation ? urun.lokasyon === selectedLocation : true)
-  );
+  const filteredUrunler = urunler.filter((urun) => {
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      (urun.ad || '').toLowerCase().includes(searchLower) ||
+      (urun.marka || '').toLowerCase().includes(searchLower) ||
+      (urun.model || '').toLowerCase().includes(searchLower) ||
+      (urun.seriNo || '').toLowerCase().includes(searchLower) ||
+      (urun.barkod || '').toLowerCase().includes(searchLower);
+    
+    const matchesCategory = selectedCategory ? urun.kategori === selectedCategory : true;
+    const matchesStatus = selectedStatus ? urun.durum === selectedStatus : true;
+    const matchesLocation = selectedLocation ? urun.lokasyon === selectedLocation : true;
+    
+    return urun.durum !== 'Depoda' && matchesSearch && matchesCategory && matchesStatus && matchesLocation;
+  });
 
   const sortedUrunler = [...filteredUrunler].sort((a, b) => {
     switch (sortBy) {
@@ -246,10 +254,10 @@ const UrunListesi = () => {
   // Ürün silme fonksiyonu
   const handleDelete = async (urunId: string) => {
     if (!isAdmin) return;
-    if (!window.confirm('Bu ürünü silmek istediğinize emin misiniz?')) return;
+    if (!window.confirm('Bu ürünü silmek istediğinize emin misiniz? Tüm hareket kayıtları da silinecektir.')) return;
     try {
-      const { error } = await supabase.from('products').delete().eq('id', urunId);
-      if (error) throw error;
+      // Context'teki removeUrun kullan - hareketlerini de siler
+      await removeUrun(urunId);
       window.location.reload(); // Hızlı çözüm, daha iyi: state güncellemesi
     } catch (err) {
       alert('Ürün silinirken hata oluştu.');
@@ -260,10 +268,12 @@ const UrunListesi = () => {
   const handleBulkDelete = async () => {
     if (!isAdmin) return;
     if (selectedProducts.length === 0) return;
-    if (!window.confirm('Seçili ürünleri silmek istediğinize emin misiniz?')) return;
+    if (!window.confirm('Seçili ürünleri silmek istediğinize emin misiniz? Tüm hareket kayıtları da silinecektir.')) return;
     try {
-      const { error } = await supabase.from('products').delete().in('id', selectedProducts);
-      if (error) throw error;
+      // Her ürünü tek tek sil (context'teki removeUrun hareketleri de siler)
+      for (const productId of selectedProducts) {
+        await removeUrun(productId);
+      }
       window.location.reload(); // Hızlı çözüm, daha iyi: state güncellemesi
     } catch (err) {
       alert('Ürünler silinirken hata oluştu.');
