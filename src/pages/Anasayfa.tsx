@@ -51,7 +51,11 @@ const Anasayfa = () => {
   const toplamUrun = urunler.length;
   const getCountForLocation = (locName: string, locId: string) => {
     if ((locName || '').toLowerCase() === 'depo') {
-      return urunler.filter(u => u.durum === 'Depoda').length;
+      // Depo için ürün miktarı toplamı değil, depo durumundaki ürün adedi
+      return urunler.filter(u => {
+        const status = String(u.durum || '').trim().toLowerCase();
+        return status === 'depoda' || status.includes('depo');
+      }).length;
     }
     return urunler.filter(u => u.location_id === locId).length;
   };

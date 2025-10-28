@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, Search, ArrowDown, ArrowUp, Plus, Download, Trash2, CheckSquare, Square, Scan, Volume2, Sun, Monitor, Laptop, Plug, Box, Printer, X, Save, AlertTriangle } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
@@ -12,6 +12,11 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 const Depo = () => {
   const { urunler, kategoriler, loadProducts, removeUrun } = useEnvanter();
+  // Sayfa açıldığında en güncel ürün listesini getir
+  useEffect(() => {
+    loadProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,7 +37,11 @@ const Depo = () => {
 
 
 
-  const depodakiUrunler = urunler.filter(urun => urun.durum === 'Depoda');
+  const depodakiUrunler = urunler.filter(urun => {
+    const status = String(urun.durum || '').trim().toLowerCase();
+    // 'Depoda' ya da içinde 'depo' geçen durumları depo kabul et
+    return status === 'depoda' || status.includes('depo');
+  });
 
   const getKategoriAdi = (kategoriId: string) => {
     const kategori = kategoriler.find(k => String(k.id) === String(kategoriId));
@@ -60,6 +69,9 @@ const Depo = () => {
       return sortDir === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
     }
   });
+
+  // Kartta görünen ürün sayısı, aktif filtrelere göre ekranda listelenen adet olsun
+  const goruntulenenUrunSayisi = filteredUrunler.length;
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -354,7 +366,7 @@ const Depo = () => {
             </div>
             <div className="ml-4">
               <h3 className="text-lg font-semibold text-gray-800">Toplam Ürün</h3>
-              <p className="text-2xl font-bold text-blue-600">{depodakiUrunler.length}</p>
+              <p className="text-2xl font-bold text-blue-600">{goruntulenenUrunSayisi}</p>
             </div>
           </div>
         </div>

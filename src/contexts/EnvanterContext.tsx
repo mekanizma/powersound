@@ -91,16 +91,33 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const loadProducts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Supabase tek select'te 1000 kayıt döndürebilir. Tüm ürünleri almak için sayfalı çekiyoruz.
+      const pageSize = 1000;
+      let from = 0;
+      let allRows: any[] = [];
+      // Döngü ile tüm sayfaları çek
+      // Not: created_at sıralaması korunur; birleştirme sonrası tekrar sıralayacağız
+      while (true) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
 
-      if (error) {
-        throw new Error('Ürünler yüklenirken bir hata oluştu');
+        if (error) {
+          throw new Error('Ürünler yüklenirken bir hata oluştu');
+        }
+
+        const chunk = data || [];
+        allRows = allRows.concat(chunk);
+        if (chunk.length < pageSize) break; // Son sayfa
+        from += pageSize;
       }
 
-      const mappedProducts: Urun[] = data.map((item: any) => ({
+      // Tek seferde güvenli sıralama (oluşturma tarihine göre)
+      allRows.sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+
+      const mappedProducts: Urun[] = allRows.map((item: any) => ({
         id: item.id,
         ad: item.name,
         marka: item.brand,
@@ -201,6 +218,18 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const addUrun = useCallback(async (urun: Urun) => {
     try {
+      // Lokasyon boş ise 'Depo' lokasyonunu bul ve ata
+      let finalLocationId: string | null | undefined = urun.lokasyon || urun.location_id;
+      if (!finalLocationId) {
+        try {
+          const { data: depoLoc } = await supabase
+            .from('locations')
+            .select('id, name')
+            .ilike('name', 'depo')
+            .single();
+          finalLocationId = depoLoc?.id || null;
+        } catch {}
+      }
       const { error } = await supabase
         .from('products')
         .insert([{
@@ -209,7 +238,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           model: urun.model,
           category_id: urun.kategori,
           status: urun.durum,
-          location_id: urun.lokasyon,
+          location_id: finalLocationId,
           serial_number: urun.seriNo,
           description: urun.aciklama,
           barcode: urun.barkod,
@@ -447,10 +476,9 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           )
         );
 
-        // Supabase'de ürün miktarını ve lokasyonunu güncelle
-        // Constraint hatası olmaması için minimum 1 yapıyoruz
-        const dbMiktar = Math.max(1, finalMiktar);
-        
+        // Supabase'de ürün miktarını ve lokasyonunu güncelle (0 dahil gerçek miktar)
+        const dbMiktar = finalMiktar;
+
         const { error: updateError } = await supabase
           .from('products')
           .update({ 

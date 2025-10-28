@@ -45,6 +45,17 @@ const UrunEkle = () => {
         throw new Error('Kategori seçimi zorunludur');
       }
 
+      // 'Depo' lokasyonunun id'sini bul
+      let depoLocationId: string | null = null;
+      try {
+        const { data: depoLoc } = await supabase
+          .from('locations')
+          .select('id, name')
+          .ilike('name', 'depo')
+          .single();
+        depoLocationId = depoLoc?.id || null;
+      } catch {}
+
       for (let i = 0; i < formData.miktar; i++) {
         const barcode = generateBarkod();
         
@@ -62,7 +73,7 @@ const UrunEkle = () => {
           serial_number: formData.seriNo ? `${formData.seriNo}-${i + 1}` : null,
           description: formData.aciklama || null,
           status: 'Depoda',
-          location_id: null,
+          location_id: depoLocationId,
           quantity: 1,
           barcode: barcode
         }]);

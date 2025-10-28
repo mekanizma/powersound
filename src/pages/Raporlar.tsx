@@ -176,9 +176,9 @@ const Raporlar = () => {
   const exportSummaryToExcel = () => {
     const summaryData = orderedLocations.map(loc => ({
       'Lokasyon': loc.name,
-      'Ürün Sayısı': getCountForLocation(loc.name, loc.id)
+      'Ürün Miktarı': getCountForLocation(loc.name, loc.id)
     }));
-    summaryData.push({ 'Lokasyon': 'TOPLAM', 'Ürün Sayısı': toplamUrun });
+    summaryData.push({ 'Lokasyon': 'TOPLAM', 'Ürün Miktarı': toplamUrun });
     exportToExcel(summaryData, 'Ozet_Raporu');
   };
 
@@ -191,12 +191,18 @@ const Raporlar = () => {
   };
 
   // Toplam ürün sayısı
-  const toplamUrun = urunler.length;
+  const toplamUrun = urunler.reduce((sum, u) => sum + (u.miktar || 0), 0);
   const getCountForLocation = (locName: string, locId: string) => {
     if ((locName || '').toLowerCase() === 'depo') {
-      return urunler.filter(u => u.durum === 'Depoda').length;
+      // Depo için ürün adedi (Depo sayfasıyla tutarlı)
+      return urunler.filter(u => {
+        const status = String(u.durum || '').trim().toLowerCase();
+        return status === 'depoda' || status.includes('depo');
+      }).length;
     }
-    return urunler.filter(u => u.location_id === locId).length;
+    return urunler
+      .filter(u => u.location_id === locId)
+      .reduce((sum, u) => sum + (u.miktar || 0), 0);
   };
   const orderedLocations = desiredLocationsOrder
     .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()) || { id: '', name })
