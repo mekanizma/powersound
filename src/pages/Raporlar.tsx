@@ -369,7 +369,9 @@ const Raporlar = () => {
         {orderedLocations.map((loc) => (
           <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
             <Warehouse className="h-8 w-8 text-green-500 mb-2" />
-            <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
+            <div className="text-lg font-semibold text-gray-700">
+              {(loc.name || '').trim().toLowerCase() === 'depo' ? 'Depo Hareketler' : loc.name}
+            </div>
             <div className="text-3xl font-bold text-green-700 mt-1">{getMovementCountForLocation(loc.name, loc.id)}</div>
             <div className="text-xs text-gray-500 mt-1">Hareket Sayısı</div>
           </div>
