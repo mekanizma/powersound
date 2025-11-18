@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Package, RefreshCw, BarChart3, ArrowRight, Clock, MapPin, PenTool as Tool, Warehouse } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useEnvanter } from '../contexts/EnvanterContext';
@@ -47,17 +47,26 @@ const Anasayfa = () => {
     fetchUsers();
   }, [urunler, hareketler]);
 
-  // Toplam ürün sayısı
+  // Lokasyonlara göre hareket sayıları
+  const hareketCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    hareketler.forEach((hareket) => {
+      const key = String(hareket.lokasyon || '');
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [hareketler]);
+
   const toplamUrun = urunler.length;
   const getCountForLocation = (locName: string, locId: string) => {
-    if ((locName || '').toLowerCase() === 'depo') {
-      // Depo için ürün miktarı toplamı değil, depo durumundaki ürün adedi
-      return urunler.filter(u => {
-        const status = String(u.durum || '').trim().toLowerCase();
-        return status === 'depoda' || status.includes('depo');
-      }).length;
-    }
-    return urunler.filter(u => u.location_id === locId).length;
+    const resolvedId =
+      locId ||
+      (locations.find(
+        (loc) => (loc.name || '').toLowerCase() === (locName || '').toLowerCase()
+      )?.id ?? '');
+    if (!resolvedId) return 0;
+    return hareketCountMap.get(String(resolvedId)) || 0;
   };
   const orderedLocations = desiredLocationsOrder
     .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()) || { id: '', name })
@@ -112,7 +121,7 @@ const Anasayfa = () => {
               <Warehouse className="h-8 w-8 text-green-500 mb-2" />
               <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
               <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
-              <div className="text-xs text-gray-500 mt-1">Mevcut Stok</div>
+              <div className="text-xs text-gray-500 mt-1">Hareket Sayısı</div>
             </Link>
           ) : (
             <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center opacity-70">

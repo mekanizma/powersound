@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Package, Warehouse, RefreshCw, Download, Filter, Calendar, Clock } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { supabase } from '../lib/supabase';
@@ -190,7 +190,28 @@ const Raporlar = () => {
     setSelectedLocation('');
   };
 
-  // Toplam ürün sayısı
+  // Hareket sayıları (Anasayfa ile uyumlu)
+  const hareketCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    hareketler.forEach((hareket) => {
+      const key = String(hareket.lokasyon || '');
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [hareketler]);
+
+  const getMovementCountForLocation = (locName: string, locId: string) => {
+    const resolvedId =
+      locId ||
+      (locations.find(
+        (loc) => (loc.name || '').toLowerCase() === (locName || '').toLowerCase()
+      )?.id ?? '');
+    if (!resolvedId) return 0;
+    return hareketCountMap.get(String(resolvedId)) || 0;
+  };
+
+  // Toplam ürün sayısı (rapor çıktıları için korunuyor)
   const toplamUrun = urunler.reduce((sum, u) => sum + (u.miktar || 0), 0);
   const getCountForLocation = (locName: string, locId: string) => {
     if ((locName || '').toLowerCase() === 'depo') {
@@ -349,7 +370,8 @@ const Raporlar = () => {
           <div key={loc.name} className="bg-white rounded-2xl shadow p-6 flex flex-col items-center">
             <Warehouse className="h-8 w-8 text-green-500 mb-2" />
             <div className="text-lg font-semibold text-gray-700">{loc.name}</div>
-            <div className="text-3xl font-bold text-green-700 mt-1">{getCountForLocation(loc.name, loc.id)}</div>
+            <div className="text-3xl font-bold text-green-700 mt-1">{getMovementCountForLocation(loc.name, loc.id)}</div>
+            <div className="text-xs text-gray-500 mt-1">Hareket Sayısı</div>
           </div>
         ))}
       </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder, Clock } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -74,7 +74,7 @@ const Hareketler = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
   const [showOrphanMovements, setShowOrphanMovements] = useState(false);
-  const [showOnlyLatest, setShowOnlyLatest] = useState(true); // Sadece son hareketi göster
+  // Tüm hareketler gösterilir (eski "sadece son hareket" modu kaldırıldı)
   const routerLocation = useLocation();
 
   // Eksik ürünleri analiz et
@@ -133,6 +133,22 @@ const Hareketler = () => {
   const getLocationName = (locationId: string) => {
     const location = locations.find(loc => loc.id === locationId);
     return location ? location.name : locationId;
+  };
+
+  const getCurrentStockCountForLocation = (locName: string, locId: string) => {
+    const normalizedName = (locName || '').trim().toLowerCase();
+    if (!locId && normalizedName !== 'depo') {
+      return 0;
+    }
+
+    if (normalizedName === 'depo') {
+      return urunler.filter(u => {
+        const status = String(u.durum || '').trim().toLowerCase();
+        return status === 'depoda' || status.includes('depo');
+      }).length;
+    }
+
+    return urunler.filter(u => String(u.location_id) === String(locId)).length;
   };
 
   const getUrunAdi = (urunId: string) => {
@@ -219,24 +235,8 @@ const Hareketler = () => {
   //   return new Date(dateStr);
   // };
 
-  // Her ürün için son hareketi göster veya tümünü göster
-  const latestMovements = showOnlyLatest ? (() => {
-    // Her ürün için sadece en son hareketi
-    const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
-    for (const hareket of filteredHareketler) {
-      const key = String(hareket.urunId);
-      const existing = latestByProduct.get(key);
-      if (!existing) {
-        latestByProduct.set(key, hareket);
-      } else {
-        // Tarih karşılaştırması
-        const tNew = new Date(hareket.tarih).getTime();
-        const tOld = new Date(existing.tarih).getTime();
-        if (tNew > tOld) latestByProduct.set(key, hareket);
-      }
-    }
-    return Array.from(latestByProduct.values());
-  })() : filteredHareketler; // Tüm hareketleri göster
+  // Tüm hareketleri göster
+  const latestMovements = filteredHareketler;
 
   // Lokasyona göre gruplama
   const locationIdSetFromMovements = Array.from(new Set(latestMovements.map(h => String(h.lokasyon))));
@@ -641,20 +641,6 @@ const Hareketler = () => {
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-800">Hareket Kayıtları</h1>
           
-          {/* Görünüm Modu: Son Hareketler / Tüm Hareketler */}
-          <button
-            onClick={() => setShowOnlyLatest(!showOnlyLatest)}
-            className={`inline-flex items-center px-4 py-2 rounded-lg transition-colors duration-200 ${
-              showOnlyLatest 
-                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200' 
-                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-            }`}
-            title={showOnlyLatest ? 'Şu anda: Her ürün için sadece son hareket gösteriliyor' : 'Şu anda: Tüm geçmiş hareketler gösteriliyor'}
-          >
-            <Clock className="h-5 w-5 mr-2" />
-            {showOnlyLatest ? 'Son Hareketler' : 'Tüm Geçmiş'}
-          </button>
-
           {orphanMovementsCount > 0 && (
             <button
               onClick={() => setShowOrphanMovements(!showOrphanMovements)}
@@ -794,6 +780,7 @@ const Hareketler = () => {
           displayLocations.map(loc => {
             const movements = groupedMovements[loc.id] || [];
             if (selectedLocation && String(loc.id) !== String(selectedLocation)) return null;
+            const stockCount = getCurrentStockCountForLocation(loc.name, loc.id);
             return (
               <div key={loc.id} className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
                 <div
@@ -803,7 +790,9 @@ const Hareketler = () => {
                   <div className="flex items-center gap-2">
                     <Folder className="h-5 w-5 text-gray-600" />
                     <span className="font-medium text-gray-800">{loc.name}</span>
-                    <span className="text-xs text-gray-500">({movements.length} kayıt)</span>
+                    <span className="text-xs text-gray-500">
+                      {movements.length} hareket
+                    </span>
                   </div>
                   <div className="flex items-center gap-3">
                     
