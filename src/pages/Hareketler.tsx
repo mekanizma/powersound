@@ -45,7 +45,7 @@ const Hareketler = () => {
   // Gösterilecek lokasyon sırası
   const desiredLocationsOrder = [
     'Depo',
-    'Limak Deluxe',
+    'PASHA',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -640,7 +640,7 @@ const Hareketler = () => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-bold text-gray-800">Hareket Kayıtları</h1>
-          
+
           {orphanMovementsCount > 0 && (
             <button
               onClick={() => setShowOrphanMovements(!showOrphanMovements)}

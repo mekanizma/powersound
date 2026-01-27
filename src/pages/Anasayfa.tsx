@@ -16,7 +16,7 @@ const Anasayfa = () => {
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Limak Deluxe',
+    'PASHA',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',

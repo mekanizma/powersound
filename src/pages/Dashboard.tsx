@@ -10,7 +10,7 @@ const Dashboard = () => {
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Limak Deluxe',
+    'PASHA',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
