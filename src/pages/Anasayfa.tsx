@@ -16,7 +16,7 @@ const Anasayfa = () => {
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'PASHA',
+    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -34,7 +34,7 @@ const Anasayfa = () => {
       if (error) return;
       const normalized = (locationsData || []).map(loc => {
         const lower = (loc.name || '').trim().toLowerCase();
-        const name = lower === 'limak deluxe' ? 'PASHA' : loc.name;
+        const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
         return { ...loc, name };
       });
       setLocations(normalized);

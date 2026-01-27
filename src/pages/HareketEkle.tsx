@@ -12,7 +12,7 @@ const HareketEkle = () => {
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'PASHA',
+    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -41,7 +41,7 @@ const HareketEkle = () => {
       } else {
         const normalized = (data || []).map(loc => {
           const lower = (loc.name || '').trim().toLowerCase();
-          const name = lower === 'limak deluxe' ? 'PASHA' : loc.name;
+          const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
           return { ...loc, name };
         });
         setLocations(normalized);

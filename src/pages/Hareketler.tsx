@@ -45,7 +45,7 @@ const Hareketler = () => {
   // Gösterilecek lokasyon sırası
   const desiredLocationsOrder = [
     'Depo',
-    'PASHA',
+    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -91,7 +91,7 @@ const Hareketler = () => {
   // Lokasyon adlarını normalize etmek için yardımcı
   const normalizeLocationName = (name: string) => {
     const lower = (name || '').trim().toLowerCase();
-    if (lower === 'limak deluxe') return 'PASHA';
+    if (lower === 'limak deluxe') return 'Pasha';
     return name;
   };
 
