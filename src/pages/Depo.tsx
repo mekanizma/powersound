@@ -14,7 +14,33 @@ const Depo = () => {
   const { urunler, kategoriler, loadProducts, removeUrun } = useEnvanter();
   // Sayfa açıldığında en güncel ürün listesini getir
   useEffect(() => {
+    // Lokasyon adlarını normalize et (Limak Deluxe -> Pasha)
+    const normalizeLocationName = (name: string) => {
+      const lower = (name || '').trim().toLowerCase();
+      if (lower === 'limak deluxe') return 'Pasha';
+      return name;
+    };
+
+    const fetchLocations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .select('id, name')
+          .order('name');
+        if (error) throw error;
+        setLocations(
+          (data || []).map(loc => ({
+            ...loc,
+            name: normalizeLocationName(loc.name)
+          }))
+        );
+      } catch (err) {
+        console.error('Lokasyonlar yüklenirken hata:', err);
+      }
+    };
+
     loadProducts();
+    fetchLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { user } = useAuth();
@@ -34,7 +60,8 @@ const Depo = () => {
   const [deleteModalProduct, setDeleteModalProduct] = useState<any>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
 
 
   const depodakiUrunler = urunler.filter(urun => {
@@ -43,12 +70,16 @@ const Depo = () => {
     return status === 'depoda' || status.includes('depo');
   });
 
+  const baseUrunler = selectedLocation
+    ? urunler.filter(urun => String(urun.location_id) === String(selectedLocation))
+    : depodakiUrunler;
+
   const getKategoriAdi = (kategoriId: string) => {
     const kategori = kategoriler.find(k => String(k.id) === String(kategoriId));
     return kategori ? kategori.name : 'Bilinmiyor';
   };
 
-  const filteredUrunler = depodakiUrunler.filter((urun) => {
+  const filteredUrunler = baseUrunler.filter((urun) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
       (urun.ad || '').toLowerCase().includes(searchLower) || 
@@ -57,7 +88,8 @@ const Depo = () => {
       (urun.seriNo || '').toLowerCase().includes(searchLower) ||
       (urun.barkod || '').toLowerCase().includes(searchLower);
     const matchesCategory = selectedCategory ? String(urun.kategori) === String(selectedCategory) : true;
-    return matchesSearch && matchesCategory;
+    const matchesLocation = selectedLocation ? String(urun.location_id) === String(selectedLocation) : true;
+    return matchesSearch && matchesCategory && matchesLocation;
   });
 
   const sortedUrunler = [...filteredUrunler].sort((a, b) => {
@@ -280,6 +312,12 @@ const Depo = () => {
     return <Package className="h-6 w-6 text-gray-400" />;
   };
 
+  const getLocationName = (locationId: string) => {
+    if (!locationId) return 'Lokasyon Yok';
+    const location = locations.find(loc => String(loc.id) === String(locationId));
+    return location ? location.name : locationId;
+  };
+
   // Excel'den toplu ürün yükleme (devre dışı bırakıldı)
 
   const handleBarcodeScan = async (barcode: string) => {
@@ -385,7 +423,7 @@ const Depo = () => {
       </div>
 
       <div className="bg-white p-4 rounded-lg shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Ara</label>
             <div className="relative">
@@ -411,6 +449,22 @@ const Depo = () => {
               {kategoriler.map((kategori) => (
                 <option key={kategori.id} value={kategori.id}>
                   {kategori.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lokasyon</label>
+            <select
+              value={selectedLocation}
+              onChange={(e) => setSelectedLocation(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              <option value="">Tüm Lokasyonlar</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
                 </option>
               ))}
             </select>
@@ -499,6 +553,12 @@ const Depo = () => {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
+                  Lokasyon
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Durum
                 </th>
                 
@@ -544,6 +604,9 @@ const Depo = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {getKategoriAdi(urun.kategori)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {getLocationName(urun.location_id)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={
