@@ -39,7 +39,12 @@ const HareketEkle = () => {
       if (error) {
         console.error('Lokasyon yükleme hatası:', error);
       } else {
-        setLocations(data || []);
+        const normalized = (data || []).map(loc => {
+          const lower = (loc.name || '').trim().toLowerCase();
+          const name = lower === 'limak deluxe' ? 'PASHA' : loc.name;
+          return { ...loc, name };
+        });
+        setLocations(normalized);
       }
     };
 

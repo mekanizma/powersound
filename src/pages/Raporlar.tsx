@@ -34,7 +34,12 @@ const Raporlar = () => {
         .from('locations')
         .select('id, name');
       if (error) return;
-      setLocations(locationsData || []);
+      const normalized = (locationsData || []).map(loc => {
+        const lower = (loc.name || '').trim().toLowerCase();
+        const name = lower === 'limak deluxe' ? 'PASHA' : loc.name;
+        return { ...loc, name };
+      });
+      setLocations(normalized);
     };
     const fetchUsers = async () => {
       const { data: usersData, error: usersError } = await supabase

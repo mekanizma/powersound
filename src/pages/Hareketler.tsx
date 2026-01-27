@@ -88,6 +88,13 @@ const Hareketler = () => {
     }
   }, [hareketler, urunler]);
   
+  // Lokasyon adlarını normalize etmek için yardımcı
+  const normalizeLocationName = (name: string) => {
+    const lower = (name || '').trim().toLowerCase();
+    if (lower === 'limak deluxe') return 'PASHA';
+    return name;
+  };
+
   // Fetch locations and users from Supabase
   useEffect(() => {
     const fetchData = async () => {
@@ -100,7 +107,12 @@ const Hareketler = () => {
       if (locationsError) {
         console.error('Error fetching locations:', locationsError);
       } else if (locationsData) {
-        setLocations(locationsData);
+        setLocations(
+          (locationsData || []).map(loc => ({
+            ...loc,
+            name: normalizeLocationName(loc.name)
+          }))
+        );
       }
 
       // Fetch users from auth_users table instead of users
