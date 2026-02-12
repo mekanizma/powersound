@@ -75,7 +75,6 @@ const Hareketler = () => {
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
   const [showOrphanMovements, setShowOrphanMovements] = useState(false);
   const [historyModalLocation, setHistoryModalLocation] = useState<{ id: string; name: string } | null>(null);
-  const [historyPage, setHistoryPage] = useState(1);
   // Tüm hareketler gösterilir (eski "sadece son hareket" modu kaldırıldı)
   const routerLocation = useLocation();
 
@@ -233,18 +232,8 @@ const Hareketler = () => {
   //   return new Date(dateStr);
   // };
 
-  // Her ürün için sadece SON hareketi lokasyon klasörlerinde göster
-  const latestMovements = (() => {
-    const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
-    // sortedHareketler tarihine göre desc olduğu için ilk görülen en yenidir
-    for (const hareket of sortedHareketler) {
-      const key = String(hareket.urunId);
-      if (!latestByProduct.has(key)) {
-        latestByProduct.set(key, hareket);
-      }
-    }
-    return Array.from(latestByProduct.values());
-  })();
+  // Tüm hareketleri göster
+  const latestMovements = filteredHareketler;
 
   // Lokasyona göre gruplama
   const locationIdSetFromMovements = Array.from(new Set(latestMovements.map(h => String(h.lokasyon))));
@@ -829,7 +818,6 @@ const Hareketler = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setHistoryPage(1);
                               setHistoryModalLocation({ id: String(loc.id), name: loc.name });
                             }}
                             className="text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md px-2 py-1 bg-white"
@@ -989,7 +977,7 @@ const Hareketler = () => {
       {/* Lokasyon Geçmiş Kayıtlar Modalı (Dış Kiralama / Servis) */}
       {historyModalLocation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">
                 {historyModalLocation.name} - Geçmiş Kayıtlar
@@ -1008,13 +996,6 @@ const Hareketler = () => {
                   h => String(h.lokasyon) === String(historyModalLocation.id)
                 );
 
-                const itemsPerHistoryPage = 50;
-                const totalHistoryPages = Math.max(1, Math.ceil(historyMovements.length / itemsPerHistoryPage));
-                const safeHistoryPage = Math.min(historyPage, totalHistoryPages);
-                const start = (safeHistoryPage - 1) * itemsPerHistoryPage;
-                const end = start + itemsPerHistoryPage;
-                const pageItems = historyMovements.slice(start, end);
-
                 if (!historyMovements.length) {
                   return (
                     <div className="p-6 text-sm text-gray-500 text-center">
@@ -1024,7 +1005,7 @@ const Hareketler = () => {
                 }
 
                 return (
-                    <div className="divide-y divide-gray-100">
+                  <div className="divide-y divide-gray-100">
                     <div className="px-4 py-2 hidden md:grid md:grid-cols-7 gap-3 bg-gray-50 text-xs font-medium text-gray-500 sticky top-0">
                       <div>Tarih</div>
                       <div>Ürün</div>
@@ -1034,7 +1015,7 @@ const Hareketler = () => {
                       <div>Açıklama</div>
                       <div>İşlemi Yapan</div>
                     </div>
-                    {pageItems.map(hareket => {
+                    {historyMovements.map(hareket => {
                       const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
                       const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
                       const isOrphan = !isValidProductName(urunAdi);
@@ -1071,39 +1052,7 @@ const Hareketler = () => {
               })()}
             </div>
 
-            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-              {(() => {
-                const historyMovements = sortedHareketler.filter(
-                  h => String(h.lokasyon) === String(historyModalLocation.id)
-                );
-                const itemsPerHistoryPage = 50;
-                const totalHistoryPages = Math.max(1, Math.ceil(historyMovements.length / itemsPerHistoryPage));
-                if (!historyMovements.length) {
-                  return <div />;
-                }
-                return (
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
-                    <button
-                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                      disabled={historyPage === 1}
-                      className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <span>
-                      Sayfa {historyPage} / {totalHistoryPages} (toplam {historyMovements.length} kayıt)
-                    </span>
-                    <button
-                      onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
-                      disabled={historyPage === totalHistoryPages}
-                      className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })()}
-
+            <div className="mt-4 flex justify-end">
               <button
                 onClick={() => setHistoryModalLocation(null)}
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
