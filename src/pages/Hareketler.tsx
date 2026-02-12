@@ -74,6 +74,8 @@ const Hareketler = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
   const [showOrphanMovements, setShowOrphanMovements] = useState(false);
+  const [historyModalLocation, setHistoryModalLocation] = useState<{ id: string; name: string } | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
   // Tüm hareketler gösterilir (eski "sadece son hareket" modu kaldırıldı)
   const routerLocation = useLocation();
 
@@ -145,22 +147,6 @@ const Hareketler = () => {
   const getLocationName = (locationId: string) => {
     const location = locations.find(loc => loc.id === locationId);
     return location ? location.name : locationId;
-  };
-
-  const getCurrentStockCountForLocation = (locName: string, locId: string) => {
-    const normalizedName = (locName || '').trim().toLowerCase();
-    if (!locId && normalizedName !== 'depo') {
-      return 0;
-    }
-
-    if (normalizedName === 'depo') {
-      return urunler.filter(u => {
-        const status = String(u.durum || '').trim().toLowerCase();
-        return status === 'depoda' || status.includes('depo');
-      }).length;
-    }
-
-    return urunler.filter(u => String(u.location_id) === String(locId)).length;
   };
 
   const getUrunAdi = (urunId: string) => {
@@ -247,8 +233,18 @@ const Hareketler = () => {
   //   return new Date(dateStr);
   // };
 
-  // Tüm hareketleri göster
-  const latestMovements = filteredHareketler;
+  // Her ürün için sadece SON hareketi lokasyon klasörlerinde göster
+  const latestMovements = (() => {
+    const latestByProduct = new Map<string, typeof filteredHareketler[number]>();
+    // sortedHareketler tarihine göre desc olduğu için ilk görülen en yenidir
+    for (const hareket of sortedHareketler) {
+      const key = String(hareket.urunId);
+      if (!latestByProduct.has(key)) {
+        latestByProduct.set(key, hareket);
+      }
+    }
+    return Array.from(latestByProduct.values());
+  })();
 
   // Lokasyona göre gruplama
   const locationIdSetFromMovements = Array.from(new Set(latestMovements.map(h => String(h.lokasyon))));
@@ -792,7 +788,11 @@ const Hareketler = () => {
           displayLocations.map(loc => {
             const movements = groupedMovements[loc.id] || [];
             if (selectedLocation && String(loc.id) !== String(selectedLocation)) return null;
-            const stockCount = getCurrentStockCountForLocation(loc.name, loc.id);
+            const locNameLower = (loc.name || '').toLowerCase();
+            const isHistoryLocation =
+              locNameLower === 'dış kiralama' ||
+              locNameLower === 'dis kiralama' ||
+              locNameLower === 'servis';
             return (
               <div key={loc.id} className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200">
                 <div
@@ -807,7 +807,6 @@ const Hareketler = () => {
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    
                     <label className="inline-flex items-center gap-2 text-xs text-gray-600">
                       <input
                         type="checkbox"
@@ -819,12 +818,26 @@ const Hareketler = () => {
                       Tümünü Seç
                     </label>
                     {isAdmin && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); openBulkEditForLocation(loc.id); }}
-                        className="text-xs text-indigo-600 hover:text-indigo-800"
-                      >
-                        Tümünü Düzenle
-                      </button>
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openBulkEditForLocation(loc.id); }}
+                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                        >
+                          Tümünü Düzenle
+                        </button>
+                        {isHistoryLocation && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHistoryPage(1);
+                              setHistoryModalLocation({ id: String(loc.id), name: loc.name });
+                            }}
+                            className="text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md px-2 py-1 bg-white"
+                          >
+                            Geçmiş Kayıtlar
+                          </button>
+                        )}
+                      </>
                     )}
                     {collapsedLocations[loc.id] ? (
                       <ArrowDown className="h-4 w-4 text-gray-500" />
@@ -973,6 +986,135 @@ const Hareketler = () => {
         </button>
       </div>
 
+      {/* Lokasyon Geçmiş Kayıtlar Modalı (Dış Kiralama / Servis) */}
+      {historyModalLocation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                {historyModalLocation.name} - Geçmiş Kayıtlar
+              </h3>
+              <button
+                onClick={() => setHistoryModalLocation(null)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
+              {(() => {
+                const historyMovements = sortedHareketler.filter(
+                  h => String(h.lokasyon) === String(historyModalLocation.id)
+                );
+
+                const itemsPerHistoryPage = 50;
+                const totalHistoryPages = Math.max(1, Math.ceil(historyMovements.length / itemsPerHistoryPage));
+                const safeHistoryPage = Math.min(historyPage, totalHistoryPages);
+                const start = (safeHistoryPage - 1) * itemsPerHistoryPage;
+                const end = start + itemsPerHistoryPage;
+                const pageItems = historyMovements.slice(start, end);
+
+                if (!historyMovements.length) {
+                  return (
+                    <div className="p-6 text-sm text-gray-500 text-center">
+                      Bu lokasyon için geçmiş hareket kaydı bulunmuyor.
+                    </div>
+                  );
+                }
+
+                return (
+                    <div className="divide-y divide-gray-100">
+                    <div className="px-4 py-2 hidden md:grid md:grid-cols-7 gap-3 bg-gray-50 text-xs font-medium text-gray-500 sticky top-0">
+                      <div>Tarih</div>
+                      <div>Ürün</div>
+                      <div>Tip</div>
+                      <div>Miktar</div>
+                      <div>Barkod</div>
+                      <div>Açıklama</div>
+                      <div>İşlemi Yapan</div>
+                    </div>
+                    {pageItems.map(hareket => {
+                      const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
+                      const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
+                      const isOrphan = !isValidProductName(urunAdi);
+                      return (
+                        <div
+                          key={hareket.id}
+                          className="px-4 py-3 grid grid-cols-1 md:grid-cols-7 gap-3 items-center hover:bg-gray-50"
+                        >
+                          <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {displayName}
+                            {isOrphan && (
+                              <div className="text-xs text-red-600 mt-1 font-mono">
+                                ID: {hareket.urunId.substring(0, 12)}...
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {hareket.tip}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
+                          <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
+                          <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                          <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              {(() => {
+                const historyMovements = sortedHareketler.filter(
+                  h => String(h.lokasyon) === String(historyModalLocation.id)
+                );
+                const itemsPerHistoryPage = 50;
+                const totalHistoryPages = Math.max(1, Math.ceil(historyMovements.length / itemsPerHistoryPage));
+                if (!historyMovements.length) {
+                  return <div />;
+                }
+                return (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <button
+                      onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                      disabled={historyPage === 1}
+                      className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span>
+                      Sayfa {historyPage} / {totalHistoryPages} (toplam {historyMovements.length} kayıt)
+                    </span>
+                    <button
+                      onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
+                      disabled={historyPage === totalHistoryPages}
+                      className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })()}
+
+              <button
+                onClick={() => setHistoryModalLocation(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barkod Tara Modalı */}
       {showBarcodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -1005,7 +1147,7 @@ const Hareketler = () => {
               )}
               
               {barcodeProduct && (
-                <div className="space-y-3 mt-2">
+              <div className="space-y-3 mt-2">
                   <div className="font-semibold text-gray-700">{barcodeProduct.ad} ({barcodeProduct.barkod})</div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">İşlem Tipi</label>
@@ -1052,6 +1194,72 @@ const Hareketler = () => {
                       rows={2}
                     />
                   </div>
+
+                  {/* Dış Kiralama & Servis geçmişi */}
+                  {(() => {
+                    const disKiralamaIds = locations
+                      .filter(l => (l.name || '').toLowerCase().includes('dış kiralama') || (l.name || '').toLowerCase().includes('dis kiralama'))
+                      .map(l => String(l.id));
+                    const servisIds = locations
+                      .filter(l => (l.name || '').toLowerCase() === 'servis')
+                      .map(l => String(l.id));
+                    const history = hareketler
+                      .filter(h => String(h.urunId) === String(barcodeProduct.id))
+                      .filter(h =>
+                        disKiralamaIds.includes(String(h.lokasyon)) ||
+                        servisIds.includes(String(h.lokasyon))
+                      )
+                      .sort((a, b) => (a.tarih < b.tarih ? 1 : -1));
+
+                    if (!history.length) return null;
+
+                    // Sadece Depo'ya giriş için göster
+                    const depoLoc = locations.find(l => (l.name || '').toLowerCase() === 'depo');
+                    const isReturningToDepo =
+                      barcodeMovementType === 'Giriş' &&
+                      depoLoc &&
+                      String(barcodeMovementLocation || '') === String(depoLoc.id);
+
+                    if (!isReturningToDepo) return null;
+
+                    return (
+                      <div className="mt-3 border-t border-gray-200 pt-3">
+                        <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                          Dış Kiralama / Servis Geçmişi
+                        </h4>
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {history.map(h => (
+                            <div
+                              key={h.id}
+                              className="text-[11px] leading-snug text-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
+                            >
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="font-medium">{formatDateTime(h.tarih)}</span>
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700">
+                                  {getLocationName(h.lokasyon)}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  h.tip === 'Giriş'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {h.tip}
+                                </span>
+                                <span className="text-gray-600 ml-1">
+                                  {h.miktar} adet
+                                </span>
+                              </div>
+                              {h.aciklama && (
+                                <div className="text-[10px] text-gray-500 truncate sm:max-w-[60%]">
+                                  {h.aciklama}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
