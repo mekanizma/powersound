@@ -306,6 +306,56 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const resolveProductLocationForMovement = async (
+    movementType: string,
+    movementLocationId: string
+  ): Promise<string> => {
+    const { data: movementLocation } = await supabase
+      .from('locations')
+      .select('id, name')
+      .eq('id', movementLocationId)
+      .maybeSingle();
+
+    const movementLocationName = String(movementLocation?.name || '').trim().toLowerCase();
+    const isExternalRental = isExternalRentalLocationName(movementLocationName);
+
+    // Kural: Dış Kiralama'dan Giriş yapıldığında ürün fiziksel olarak depoya geri döner.
+    if (movementType === 'Giriş' && isExternalRental) {
+      const { data: depoLocation } = await supabase
+        .from('locations')
+        .select('id, name')
+        .ilike('name', 'depo')
+        .limit(1)
+        .maybeSingle();
+
+      if (depoLocation?.id) {
+        return String(depoLocation.id);
+      }
+    }
+
+    return movementLocationId;
+  };
+
+  const getLocationNameById = async (locationId: string): Promise<string> => {
+    if (!locationId) return '';
+    const { data } = await supabase
+      .from('locations')
+      .select('name')
+      .eq('id', locationId)
+      .maybeSingle();
+    return String(data?.name || '').trim().toLowerCase();
+  };
+
+  const isExternalRentalLocationName = (name: string): boolean => {
+    const normalized = String(name || '').trim().toLowerCase();
+    return normalized.includes('kiralama');
+  };
+
+  const isDepotLocationName = (name: string): boolean => {
+    const normalized = String(name || '').trim().toLowerCase();
+    return normalized.includes('depo');
+  };
+
   const updateHareket = async (id: string, updatedHareket: Partial<Hareket>) => {
     try {
       const eskiHareket = hareketler.find(h => h.id === id);
@@ -344,9 +394,13 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const toplamEtki = eskiEtki + yeniEtki;
         // Ürün miktarını güncelle
         const yeniMiktar = urun.miktar + toplamEtki;
-        // Lokasyon değişikliği varsa uygula
-        const yeniLokasyon = updatedHareket.lokasyon || urun.location_id;
-        // Lokasyona göre durum belirle
+        // Lokasyon değişikliği varsa uygula (Dış Kiralama + Giriş => ürün depoya döner)
+        const hedefHareketLokasyonu = updatedHareket.lokasyon || urun.location_id;
+        const yeniLokasyon = await resolveProductLocationForMovement(
+          updatedHareket.tip,
+          hedefHareketLokasyonu
+        );
+        // Ürünün gerçek lokasyonuna göre durum belirle
         let yeniDurum: string = 'Depoda';
         try {
           const { data: locData } = await supabase
@@ -407,14 +461,70 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
       
+      const urun = urunler.find(u => String(u.id) === String(hareket.urunId));
+      const hareketKayitLokasyonu = hareket.lokasyon;
+      let shouldCloneToExternalRental = false;
+      let externalRentalLocationId = '';
+
+      // Kural: Dış Kiralama'dan Depo'ya girişte asıl kayıt Depo'ya yazılır,
+      // ayrıca Dış Kiralama klasöründe görünmesi için klon kayıt eklenir.
+      if (urun && hareket.tip === 'Giriş' && hareket.lokasyon) {
+        const secilenLokasyonAdi = await getLocationNameById(hareket.lokasyon);
+        const urununMevcutLokasyonAdi = await getLocationNameById(urun.location_id);
+        const isDepoSecimi = isDepotLocationName(secilenLokasyonAdi);
+
+        if (isDepoSecimi) {
+          if (isExternalRentalLocationName(urununMevcutLokasyonAdi)) {
+            shouldCloneToExternalRental = true;
+            externalRentalLocationId = urun.location_id;
+          } else {
+            const { data: lastMovement } = await supabase
+              .from('movements')
+              .select('location_id, created_at')
+              .eq('product_id', hareket.urunId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (lastMovement?.location_id) {
+              const sonHareketLokasyonAdi = await getLocationNameById(String(lastMovement.location_id));
+              if (isExternalRentalLocationName(sonHareketLokasyonAdi)) {
+                shouldCloneToExternalRental = true;
+                externalRentalLocationId = String(lastMovement.location_id);
+              }
+            }
+          }
+
+          // Güvenli fallback: dış kiralama lokasyonunu isimden bul.
+          if (!externalRentalLocationId) {
+            const { data: kiralamaLoc } = await supabase
+              .from('locations')
+              .select('id, name')
+              .ilike('name', '%kiralama%')
+              .limit(1)
+              .maybeSingle();
+            if (kiralamaLoc?.id) {
+              externalRentalLocationId = String(kiralamaLoc.id);
+            }
+          }
+        }
+      }
+
+      let finalAciklama = hareket.aciklama || '';
+      if (shouldCloneToExternalRental) {
+        finalAciklama = finalAciklama
+          ? `${finalAciklama} | Dış kiralamadan depoya iade`
+          : 'Dış kiralamadan depoya iade';
+      }
+
       const { data, error } = await supabase
         .from('movements')
         .insert([{
           product_id: hareket.urunId,
           type: hareket.tip,
           quantity: hareket.miktar,
-          description: hareket.aciklama,
-          location_id: hareket.lokasyon,
+          description: finalAciklama,
+          location_id: hareketKayitLokasyonu,
           user_id: hareket.kullanici || null,
           created_at: new Date().toISOString()
         }])
@@ -426,18 +536,46 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         throw new Error(`Veritabanı hatası: ${error.message}`);
       }
 
+      const canCloneToExternalRental =
+        shouldCloneToExternalRental &&
+        Boolean(externalRentalLocationId) &&
+        String(externalRentalLocationId) !== String(hareket.lokasyon);
+
+      if (canCloneToExternalRental) {
+        const cloneAciklama = finalAciklama
+          ? `${finalAciklama} | KLON`
+          : 'Dış kiralama kaydı için klon';
+
+        const { error: cloneError } = await supabase
+          .from('movements')
+          .insert([{
+            product_id: hareket.urunId,
+            type: hareket.tip,
+            quantity: hareket.miktar,
+            description: cloneAciklama,
+            location_id: externalRentalLocationId,
+            user_id: hareket.kullanici || null,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (cloneError) {
+          console.error('Klon hareket ekleme hatası:', cloneError);
+        }
+      }
+
       console.log('Hareket başarıyla eklendi:', data);
 
       // Yeni hareketi listeye ekle
       const newHareket = {
         ...hareket,
+        aciklama: finalAciklama,
+        lokasyon: hareketKayitLokasyonu,
         id: data.id,
         tarih: data.created_at
       };
       setHareketler(prev => [newHareket, ...prev]);
 
       // Ürün miktarını ve lokasyonunu güncelle
-      const urun = urunler.find(u => String(u.id) === String(hareket.urunId));
       if (urun) {
         const yeniMiktar = urun.miktar + (hareket.tip === 'Giriş' ? hareket.miktar : -hareket.miktar);
         
@@ -451,13 +589,14 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         // Miktar negatif olamaz, minimum 0 olmalı
         const finalMiktar = Math.max(0, yeniMiktar);
-        // Lokasyona göre durum belirle
+        // Ürünün gerçek lokasyonuna göre durum belirle
         let yeniDurum: string = 'Depoda';
+      const yeniUrunLokasyonu = await resolveProductLocationForMovement(hareket.tip, hareket.lokasyon);
         try {
           const { data: locData } = await supabase
             .from('locations')
             .select('name')
-            .eq('id', hareket.lokasyon)
+            .eq('id', yeniUrunLokasyonu)
             .single();
           const locName = String(locData?.name || '').trim();
           if (locName) {
@@ -471,7 +610,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUrunler(prevUrunler =>
           prevUrunler.map(u =>
             u.id === urun.id
-              ? { ...u, miktar: finalMiktar, location_id: hareket.lokasyon, lokasyon: hareket.lokasyon, durum: yeniDurum }
+              ? { ...u, miktar: finalMiktar, location_id: yeniUrunLokasyonu, lokasyon: yeniUrunLokasyonu, durum: yeniDurum }
               : u
           )
         );
@@ -484,7 +623,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           .update({ 
             quantity: dbMiktar,
             status: yeniDurum,
-            location_id: hareket.lokasyon
+            location_id: yeniUrunLokasyonu
           })
           .eq('id', urun.id);
 

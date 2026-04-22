@@ -64,15 +64,25 @@ const Depo = () => {
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
 
 
-  const depodakiUrunler = urunler.filter(urun => {
+  const depoLocationIds = new Set(
+    locations
+      .filter((loc) => String(loc.name || '').trim().toLowerCase().includes('depo'))
+      .map((loc) => String(loc.id))
+  );
+
+  const depodakiUrunler = urunler.filter((urun) => {
     const status = String(urun.durum || '').trim().toLowerCase();
-    // 'Depoda' ya da içinde 'depo' geçen durumları depo kabul et
-    return status === 'depoda' || status.includes('depo');
+    const locationId = String(urun.location_id || '');
+    // Eski kayıtlarda durum metni farklı kalabildiği için lokasyon üzerinden de depo kontrolü yap
+    return status === 'depoda' || status.includes('depo') || depoLocationIds.has(locationId);
   });
 
-  const baseUrunler = selectedLocation
-    ? urunler.filter(urun => String(urun.location_id) === String(selectedLocation))
-    : depodakiUrunler;
+  const hasSearchTerm = searchTerm.trim().length > 0;
+  const baseUrunler = hasSearchTerm
+    ? urunler
+    : selectedLocation
+      ? urunler.filter(urun => String(urun.location_id) === String(selectedLocation))
+      : depodakiUrunler;
 
   const getKategoriAdi = (kategoriId: string) => {
     const kategori = kategoriler.find(k => String(k.id) === String(kategoriId));
@@ -88,7 +98,11 @@ const Depo = () => {
       (urun.seriNo || '').toLowerCase().includes(searchLower) ||
       (urun.barkod || '').toLowerCase().includes(searchLower);
     const matchesCategory = selectedCategory ? String(urun.kategori) === String(selectedCategory) : true;
-    const matchesLocation = selectedLocation ? String(urun.location_id) === String(selectedLocation) : true;
+    const matchesLocation = hasSearchTerm
+      ? true
+      : selectedLocation
+        ? String(urun.location_id) === String(selectedLocation)
+        : true;
     return matchesSearch && matchesCategory && matchesLocation;
   });
 

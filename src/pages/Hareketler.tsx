@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
+import { Plus, Search, Trash2, RefreshCw, ArrowDown, ArrowUp, Download, Scan, X, AlertTriangle, Camera, CheckCircle, ChevronLeft, ChevronRight, Folder, Pencil } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { exportToExcel } from '../utils/excelUtils';
 import { supabase } from '../lib/supabase';
@@ -148,6 +148,26 @@ const Hareketler = () => {
     return location ? location.name : locationId;
   };
 
+  const isDepotLocationId = (locationId: string) => {
+    const locationName = getLocationName(locationId);
+    return String(locationName || '').trim().toLowerCase().includes('depo');
+  };
+
+  const getCurrentStockCountForLocation = (locName: string, locId: string) => {
+    const normalizedName = (locName || '').trim().toLowerCase();
+    if (!locId && normalizedName !== 'depo') {
+      return 0;
+    }
+
+    if (normalizedName === 'depo') {
+      return urunler.filter(u => {
+        const status = String(u.durum || '').trim().toLowerCase();
+        return status === 'depoda' || status.includes('depo');
+      }).length;
+    }
+
+    return urunler.filter(u => String(u.location_id) === String(locId)).length;
+  };
   const getUrunAdi = (urunId: string) => {
     const urun = urunler.find(u => String(u.id) === String(urunId));
     return urun ? urun.ad : '';
@@ -166,6 +186,14 @@ const Hareketler = () => {
     return urun ? (urun.barkod || '-') : '-';
   };
 
+  const getMovementTypeLabel = (movementType: string, locationName: string) => {
+    const isExternalRental = String(locationName || '').trim().toLowerCase() === 'dış kiralama'
+      || String(locationName || '').trim().toLowerCase() === 'dis kiralama';
+
+    if (!isExternalRental) return movementType;
+    return movementType === 'Giriş' ? 'Giriş yapıldı' : 'Çıkış yapıldı';
+  };
+
   const getUserName = (userId: string) => {
     const user = users.find(u => String(u.id) === String(userId));
     return user ? user.username : 'Unknown';
@@ -174,8 +202,11 @@ const Hareketler = () => {
   // Filtreleme
   const filteredHareketler = hareketler.filter((hareket) => {
     const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
+    const urunBarkod = getUrunBarkod(hareket.urunId) || '';
+    const normalizedSearch = searchTerm.toLowerCase();
     const matchesSearch = urunAdi.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (hareket.aciklama || '').toLowerCase().includes(searchTerm.toLowerCase());
+                          (hareket.aciklama || '').toLowerCase().includes(normalizedSearch) ||
+                          urunBarkod.toLowerCase().includes(normalizedSearch);
     const matchesType = selectedType ? hareket.tip === selectedType : true;
     
     // Hatalı hareket filtresi
@@ -358,6 +389,10 @@ const Hareketler = () => {
 
   const handleBarcodeMovement = async () => {
     if (!barcodeProduct) return;
+    if (barcodeMovementType === 'Çıkış' && isDepotLocationId(barcodeMovementLocation)) {
+      alert('Çıkış işleminde hedef lokasyon Depo olamaz. Lütfen ürünün gideceği lokasyonu seçin.');
+      return;
+    }
     
     // Çıkış hareketi için stok kontrolü
     if (barcodeMovementType === 'Çıkış' && barcodeProduct.miktar < barcodeMovementQuantity) {
@@ -456,6 +491,10 @@ const Hareketler = () => {
 
   const processBulkMovements = async () => {
     if (!bulkMovementLocation || scannedBarcodes.length === 0) return;
+    if (bulkMovementType === 'Çıkış' && isDepotLocationId(bulkMovementLocation)) {
+      alert('Çıkış işleminde hedef lokasyon Depo olamaz. Lütfen ürünün gideceği lokasyonu seçin.');
+      return;
+    }
     
     setIsProcessingBulk(true);
     const validBarcodes = scannedBarcodes.filter(item => item.product && !item.error);
@@ -507,6 +546,64 @@ const Hareketler = () => {
     } finally {
       setIsProcessingBulk(false);
     }
+  };
+
+  const openSelectedProductsBulkBarcodeModal = () => {
+    if (selectedMovements.length === 0) return;
+
+    const selectedSet = new Set(selectedMovements.map(String));
+    const selectedMovementRows = hareketler.filter(h => selectedSet.has(String(h.id)));
+
+    if (selectedMovementRows.length === 0) {
+      alert('Seçili harekete ait ürün bulunamadı.');
+      return;
+    }
+
+    const groupedByProduct = selectedMovementRows.reduce<Record<string, number>>((acc, hareket) => {
+      const key = String(hareket.urunId);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const scannedFromSelection = Object.entries(groupedByProduct).map(([productId, quantity]) => {
+      const product = urunler.find(u => String(u.id) === productId) || null;
+      return {
+        id: `selected-${productId}`,
+        barcode: product?.barkod || '',
+        product,
+        quantity,
+        error: product ? undefined : 'Ürün bulunamadı'
+      };
+    });
+
+    setShowBulkBarcodeModal(true);
+    setScannedBarcodes(scannedFromSelection);
+    setBulkMovementType('Çıkış');
+    setBulkMovementLocation(String(selectedMovementRows[0]?.lokasyon || ''));
+    setBulkMovementDescription('');
+    setIsProcessingBulk(false);
+    setCurrentPage(1);
+  };
+
+  const openSingleMovementBulkBarcodeModal = (movement: any) => {
+    const product = urunler.find(u => String(u.id) === String(movement.urunId)) || null;
+    if (!product) {
+      alert('Bu harekete ait ürün bulunamadı.');
+      return;
+    }
+
+    setShowBulkBarcodeModal(true);
+    setScannedBarcodes([{
+      id: `single-${movement.id}`,
+      barcode: product.barkod || '',
+      product,
+      quantity: 1
+    }]);
+    setBulkMovementType((movement.tip as 'Giriş' | 'Çıkış') || 'Çıkış');
+    setBulkMovementLocation(String(movement.lokasyon || ''));
+    setBulkMovementDescription(String(movement.aciklama || ''));
+    setIsProcessingBulk(false);
+    setCurrentPage(1);
   };
 
   // Sayfalama hesaplamaları
@@ -655,6 +752,13 @@ const Hareketler = () => {
         <div className="flex gap-2">
           {isAdmin && selectedMovements.length > 0 && (
             <div className="flex gap-2 mr-4">
+              <button
+                onClick={openSelectedProductsBulkBarcodeModal}
+                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+              >
+                <Pencil className="h-5 w-5 mr-2" />
+                Seçilen Ürünleri Düzenle ({selectedMovements.length})
+              </button>
               <button
                 onClick={handleBulkDelete}
                 className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200"
@@ -807,25 +911,17 @@ const Hareketler = () => {
                       Tümünü Seç
                     </label>
                     {isAdmin && (
-                      <>
+                      isHistoryLocation && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); openBulkEditForLocation(loc.id); }}
-                          className="text-xs text-indigo-600 hover:text-indigo-800"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setHistoryModalLocation({ id: String(loc.id), name: loc.name });
+                          }}
+                          className="text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md px-2 py-1 bg-white"
                         >
-                          Tümünü Düzenle
+                          Geçmiş Kayıtlar
                         </button>
-                        {isHistoryLocation && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setHistoryModalLocation({ id: String(loc.id), name: loc.name });
-                            }}
-                            className="text-xs text-gray-700 hover:text-gray-900 border border-gray-300 rounded-md px-2 py-1 bg-white"
-                          >
-                            Geçmiş Kayıtlar
-                          </button>
-                        )}
-                      </>
+                      )
                     )}
                     {collapsedLocations[loc.id] ? (
                       <ArrowDown className="h-4 w-4 text-gray-500" />
@@ -869,7 +965,7 @@ const Hareketler = () => {
                         </div>
                         <div>
                           <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {hareket.tip}
+                            {getMovementTypeLabel(hareket.tip, loc.name)}
                           </span>
                         </div>
                         <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
@@ -894,12 +990,6 @@ const Hareketler = () => {
                           />
                           {isAdmin && (
                             <>
-                              <button
-                                onClick={() => openEditModal(hareket)}
-                                className="text-indigo-600 hover:text-indigo-900 text-sm"
-                              >
-                                Düzenle
-                              </button>
                               <button
                                 onClick={() => handleDelete(hareket)}
                                 className="text-red-600 hover:text-red-900 text-sm"
