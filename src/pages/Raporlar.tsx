@@ -371,46 +371,56 @@ const Raporlar = () => {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl shadow p-6 mt-8">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-8 hover:shadow-md transition-all duration-300">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <RefreshCw className="h-6 w-6 text-indigo-400" /> 
-            {showFilters ? 'Filtrelenmiş Hareketler' : 'Son 20 Hareket'}
+          <h2 className="text-xl font-bold text-gray-800 flex items-center">
+            <RefreshCw className="h-5 w-5 mr-2 text-indigo-600" />
+            {showFilters ? 'Filtrelenmiş Hareketler' : 'Son Hareketler'}
           </h2>
           <div className="text-sm text-gray-600">
-            {filteredMovements.length} hareket gösteriliyor
+            {(showFilters ? filteredMovements : hareketler.slice(0, 5)).length} hareket gösteriliyor
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Tarih</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Ürün</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Tip</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Miktar</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Lokasyon</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Açıklama</th>
-                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">İşlemi Yapan</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
-              {(showFilters ? filteredMovements : hareketler.slice(-20)).reverse().map((h) => (
-                <tr key={h.id}>
-                  <td className="px-4 py-2 text-sm text-gray-700">{formatDate(h.tarih)}</td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{getProductName(h.urunId)}</td>
-                  <td className="px-4 py-2 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${h.tip === 'Giriş' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{h.tip}</span>
-                  </td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{h.miktar}</td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{getLocationName(h.lokasyon)}</td>
-                  <td className="px-4 py-2 text-sm text-gray-500 max-w-xs truncate">{h.aciklama}</td>
-                  <td className="px-4 py-2 text-sm text-gray-700">{getUserName(h.kullanici)}</td>
-                </tr>
+        {(() => {
+          const displayMovements = showFilters ? filteredMovements : hareketler.slice(0, 5);
+          return displayMovements.length > 0 ? (
+            <div className="space-y-3">
+              {displayMovements.map((hareket, index) => (
+                <div
+                  key={hareket.id}
+                  className="flex items-center p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors transform hover:scale-[1.01] duration-200"
+                  style={{ animationDelay: `${index * 100}ms` }}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center mr-4 ${
+                      hareket.tip === 'Giriş'
+                        ? 'bg-green-100 text-green-600'
+                        : 'bg-red-100 text-red-600'
+                    }`}
+                  >
+                    <RefreshCw className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-800">
+                      {hareket.urunAdi || getProductName(hareket.urunId) || 'Bilinmeyen Ürün'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {hareket.tip} - {formatDate(hareket.tarih)} - {getUserName(hareket.kullanici)}
+                    </p>
+                  </div>
+                  <div className="text-sm font-medium text-gray-700 bg-white px-3 py-1 rounded-full border border-gray-200">
+                    {hareket.miktar} adet
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 bg-gray-50 rounded-xl">
+              <RefreshCw className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-gray-500">Henüz hareket kaydı bulunmamaktadır.</p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
