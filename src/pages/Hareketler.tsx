@@ -7,7 +7,14 @@ import { supabase } from '../lib/supabase';
 import { Urun } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import BarcodeScanner from '../components/BarcodeScanner';
-import { filterMovementsForLocation, isExcludedLocationName, isHotelLocationName } from '../utils/movementLocationUtils';
+import {
+  filterMovementsForLocation,
+  getExternalRentalFlowDirection,
+  groupExternalRentalMovementsByProduct,
+  isExcludedLocationName,
+  isExternalRentalLocationName,
+  isHotelLocationName
+} from '../utils/movementLocationUtils';
 
 const Hareketler = () => {
   const { hareketler, urunler, removeHareket, addHareket, updateHareket, removeHareketler } = useEnvanter();
@@ -183,12 +190,53 @@ const Hareketler = () => {
     return urun ? (urun.barkod || '-') : '-';
   };
 
-  const getMovementTypeLabel = (movementType: string, locationName: string) => {
-    const isExternalRental = String(locationName || '').trim().toLowerCase() === 'dış kiralama'
-      || String(locationName || '').trim().toLowerCase() === 'dis kiralama';
+  const renderMovementTypeCell = (hareket: { tip: string; aciklama?: string }, locationName: string) => {
+    if (!isExternalRentalLocationName(locationName)) {
+      return (
+        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+          hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {hareket.tip}
+        </span>
+      );
+    }
 
-    if (!isExternalRental) return movementType;
-    return movementType === 'Giriş' ? 'Giriş yapıldı' : 'Çıkış yapıldı';
+    const direction = getExternalRentalFlowDirection(hareket);
+    return renderExternalRentalTypeBadges(direction === 'Giriş', direction === 'Çıkış');
+  };
+
+  const renderExternalRentalTypeBadges = (hasGiris: boolean, hasCikis: boolean) => (
+    <div className="inline-flex items-center gap-1">
+      <span className={`px-2 py-0.5 text-xs rounded-full ${
+        hasGiris ? 'bg-green-100 text-green-800 font-semibold' : 'bg-gray-100 text-gray-400'
+      }`}>
+        Giriş
+      </span>
+      <span className={`px-2 py-0.5 text-xs rounded-full ${
+        hasCikis ? 'bg-red-100 text-red-800 font-semibold' : 'bg-gray-100 text-gray-400'
+      }`}>
+        Çıkış
+      </span>
+    </div>
+  );
+
+  const getLocationDisplayCount = (loc: { id: string; name: string }, movements: typeof latestMovements) => {
+    if (isExternalRentalLocationName(loc.name)) {
+      return groupExternalRentalMovementsByProduct(movements).length;
+    }
+    return movements.length;
+  };
+
+  const toggleGroupedMovementSelection = (movementIds: string[]) => {
+    const allSelected = movementIds.every(id => selectedMovements.includes(id));
+    setSelectedMovements(prev => {
+      if (allSelected) {
+        return prev.filter(id => !movementIds.includes(id));
+      }
+      const merged = new Set(prev);
+      movementIds.forEach(id => merged.add(id));
+      return Array.from(merged);
+    });
   };
 
   const getUserName = (userId: string) => {
@@ -900,7 +948,7 @@ const Hareketler = () => {
                     <Folder className="h-5 w-5 text-gray-600" />
                     <span className="font-medium text-gray-800">{loc.name}</span>
                     <span className="text-xs text-gray-500">
-                      {movements.length} hareket
+                      {getLocationDisplayCount(loc, movements)} hareket
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -951,89 +999,166 @@ const Hareketler = () => {
                       const page = getLocationPage(loc.id);
                       const start = (page - 1) * itemsPerPage;
                       const end = start + itemsPerPage;
-                      const pageItems = movements.slice(start, end);
-                      return pageItems.length > 0 ? pageItems.map(hareket => {
+                      const isExternalRental = isExternalRentalLocationName(loc.name);
+                      const externalRentalGroups = isExternalRental
+                        ? groupExternalRentalMovementsByProduct(movements)
+                        : [];
+                      const displayCount = isExternalRental ? externalRentalGroups.length : movements.length;
+                      const pageItems = isExternalRental
+                        ? externalRentalGroups.slice(start, end)
+                        : movements.slice(start, end);
+
+                      if (displayCount === 0) {
+                        return (
+                          <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
+                        );
+                      }
+
+                      if (isExternalRental) {
+                        return pageItems.map(group => {
+                          const hareket = group.latestMovement;
+                          const movementIds = group.movements.map(m => m.id);
+                          const allSelected = movementIds.every(id => selectedMovements.includes(id));
+                          const urunAdi = hareket.urunAdi || getUrunAdi(group.urunId) || '';
+                          const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
+                          const isOrphan = !isValidProductName(urunAdi);
+
+                          return (
+                            <div key={`external-rental-${group.urunId}`} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
+                              <div className="text-sm text-gray-700 space-y-1">
+                                {group.cikisMovement && (
+                                  <div>Çıkış: {formatDateTime(group.cikisMovement.tarih)}</div>
+                                )}
+                                {group.girisMovement && (
+                                  <div>Giriş: {formatDateTime(group.girisMovement.tarih)}</div>
+                                )}
+                              </div>
+                              <div className="text-sm font-medium text-gray-900 truncate">
+                                {displayName}
+                                {isOrphan && (
+                                  <div className="text-xs text-red-600 mt-1 font-mono">
+                                    ID: {group.urunId.substring(0, 12)}...
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                {renderExternalRentalTypeBadges(group.hasGiris, group.hasCikis)}
+                              </div>
+                              <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
+                              <div className="text-sm text-gray-700">{getUrunBarkod(group.urunId)}</div>
+                              <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                              <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
+                              <div className="flex items-center justify-between md:justify-end gap-3">
+                                <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={() => toggleGroupedMovementSelection(movementIds)}
+                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                  />
+                                  Seç
+                                </label>
+                                <input
+                                  type="checkbox"
+                                  checked={allSelected}
+                                  onChange={() => toggleGroupedMovementSelection(movementIds)}
+                                  className="hidden md:block h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                />
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDelete(hareket)}
+                                    className="text-red-600 hover:text-red-900 text-sm"
+                                  >
+                                    Sil
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        });
+                      }
+
+                      return (pageItems as typeof movements).map(hareket => {
                         const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
                         const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
                         const isOrphan = !isValidProductName(urunAdi);
                         return (
-                      <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
-                        <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {displayName}
-                          {isOrphan && (
-                            <div className="text-xs text-red-600 mt-1 font-mono">
-                              ID: {hareket.urunId.substring(0, 12)}...
+                          <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
+                            <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {displayName}
+                              {isOrphan && (
+                                <div className="text-xs text-red-600 mt-1 font-mono">
+                                  ID: {hareket.urunId.substring(0, 12)}...
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        <div>
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                            {getMovementTypeLabel(hareket.tip, loc.name)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
-                        <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
-                        <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
-                        <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
-                        <div className="flex items-center justify-between md:justify-end gap-3">
-                          <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
-                            <input
-                              type="checkbox"
-                              checked={selectedMovements.includes(hareket.id)}
-                              onChange={() => toggleMovementSelection(hareket.id)}
-                              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                            />
-                            Seç
-                          </label>
-                          <input
-                            type="checkbox"
-                            checked={selectedMovements.includes(hareket.id)}
-                            onChange={() => toggleMovementSelection(hareket.id)}
-                            className="hidden md:block h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                          />
-                          {isAdmin && (
-                            <>
-                              <button
-                                onClick={() => handleDelete(hareket)}
-                                className="text-red-600 hover:text-red-900 text-sm"
-                              >
-                                Sil
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      );
-                      }) : (
-                        <div className="px-4 py-6 text-sm text-gray-500">Bu lokasyonda hareket bulunmuyor</div>
-                      );
+                            <div>
+                              {renderMovementTypeCell(hareket, loc.name)}
+                            </div>
+                            <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
+                            <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
+                            <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                            <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
+                            <div className="flex items-center justify-between md:justify-end gap-3">
+                              <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedMovements.includes(hareket.id)}
+                                  onChange={() => toggleMovementSelection(hareket.id)}
+                                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                                />
+                                Seç
+                              </label>
+                              <input
+                                type="checkbox"
+                                checked={selectedMovements.includes(hareket.id)}
+                                onChange={() => toggleMovementSelection(hareket.id)}
+                                className="hidden md:block h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                              />
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleDelete(hareket)}
+                                  className="text-red-600 hover:text-red-900 text-sm"
+                                >
+                                  Sil
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
                     })()}
 
                     {/* Lokasyon içi sayfalama kontrolü */}
-                    {movements.length > itemsPerPage && (
+                    {(() => {
+                      const displayCount = getLocationDisplayCount(loc, movements);
+                      if (displayCount <= itemsPerPage) return null;
+                      const totalPages = Math.ceil(displayCount / itemsPerPage);
+                      return (
                       <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-t border-gray-200">
                         <div className="text-sm text-gray-700">
-                          Sayfa {getLocationPage(loc.id)} / {Math.ceil(movements.length / itemsPerPage)}
+                          Sayfa {getLocationPage(loc.id)} / {totalPages}
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) - 1, Math.ceil(movements.length / itemsPerPage))}
+                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) - 1, totalPages)}
                             disabled={getLocationPage(loc.id) === 1}
                             className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <ChevronLeft className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) + 1, Math.ceil(movements.length / itemsPerPage))}
-                            disabled={getLocationPage(loc.id) === Math.ceil(movements.length / itemsPerPage)}
+                            onClick={() => setLocationPage(loc.id, getLocationPage(loc.id) + 1, totalPages)}
+                            disabled={getLocationPage(loc.id) === totalPages}
                             className="p-1 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <ChevronRight className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1109,33 +1234,50 @@ const Hareketler = () => {
                       <div>Açıklama</div>
                       <div>İşlemi Yapan</div>
                     </div>
-                    {historyMovements.map(hareket => {
-                      const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
+                    {(isExternalRentalLocationName(historyModalLocation.name)
+                      ? groupExternalRentalMovementsByProduct(historyMovements)
+                      : historyMovements.map(hareket => ({
+                          urunId: hareket.urunId,
+                          movements: [hareket],
+                          hasGiris: hareket.tip === 'Giriş',
+                          hasCikis: hareket.tip === 'Çıkış',
+                          girisMovement: hareket.tip === 'Giriş' ? hareket : undefined,
+                          cikisMovement: hareket.tip === 'Çıkış' ? hareket : undefined,
+                          latestMovement: hareket
+                        }))
+                    ).map(group => {
+                      const hareket = group.latestMovement;
+                      const urunAdi = hareket.urunAdi || getUrunAdi(group.urunId) || '';
                       const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
                       const isOrphan = !isValidProductName(urunAdi);
                       return (
                         <div
-                          key={hareket.id}
+                          key={`history-${group.urunId}`}
                           className="px-4 py-3 grid grid-cols-1 md:grid-cols-7 gap-3 items-center hover:bg-gray-50"
                         >
-                          <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
+                          <div className="text-sm text-gray-700 space-y-1">
+                            {group.cikisMovement && (
+                              <div>Çıkış: {formatDateTime(group.cikisMovement.tarih)}</div>
+                            )}
+                            {group.girisMovement && (
+                              <div>Giriş: {formatDateTime(group.girisMovement.tarih)}</div>
+                            )}
+                          </div>
                           <div className="text-sm font-medium text-gray-900 truncate">
                             {displayName}
                             {isOrphan && (
                               <div className="text-xs text-red-600 mt-1 font-mono">
-                                ID: {hareket.urunId.substring(0, 12)}...
+                                ID: {group.urunId.substring(0, 12)}...
                               </div>
                             )}
                           </div>
                           <div>
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              hareket.tip === 'Giriş' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                            }`}>
-                              {hareket.tip}
-                            </span>
+                            {isExternalRentalLocationName(historyModalLocation.name)
+                              ? renderExternalRentalTypeBadges(group.hasGiris, group.hasCikis)
+                              : renderMovementTypeCell(hareket, historyModalLocation.name)}
                           </div>
                           <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
-                          <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
+                          <div className="text-sm text-gray-700">{getUrunBarkod(group.urunId)}</div>
                           <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
                           <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
                         </div>
@@ -1281,13 +1423,32 @@ const Hareketler = () => {
                                 <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700">
                                   {getLocationName(h.lokasyon)}
                                 </span>
-                                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
-                                  h.tip === 'Giriş'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800'
-                                }`}>
-                                  {h.tip}
-                                </span>
+                                {isExternalRentalLocationName(getLocationName(h.lokasyon)) ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                      getExternalRentalFlowDirection(h) === 'Giriş'
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-gray-100 text-gray-400'
+                                    }`}>
+                                      Giriş
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                      getExternalRentalFlowDirection(h) === 'Çıkış'
+                                        ? 'bg-red-100 text-red-800'
+                                        : 'bg-gray-100 text-gray-400'
+                                    }`}>
+                                      Çıkış
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                                    h.tip === 'Giriş'
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}>
+                                    {h.tip}
+                                  </span>
+                                )}
                                 <span className="text-gray-600 ml-1">
                                   {h.miktar} adet
                                 </span>
