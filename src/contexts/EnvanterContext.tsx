@@ -704,17 +704,13 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         String(externalRentalLocationId) !== String(hareket.lokasyon);
 
       if (canCloneToExternalRental) {
-        const cloneAciklama = finalAciklama
-          ? `${finalAciklama} | KLON`
-          : 'Dış kiralama kaydı için klon';
-
         const { error: cloneError } = await supabase
           .from('movements')
           .insert([{
             product_id: hareket.urunId,
             type: hareket.tip,
             quantity: hareket.miktar,
-            description: cloneAciklama,
+            description: hareket.aciklama || '',
             location_id: externalRentalLocationId,
             user_id: hareket.kullanici || null,
             created_at: new Date().toISOString()
@@ -883,14 +879,11 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           String(sideEffects.externalRentalLocationId) !== String(hareket.lokasyon);
 
         if (canCloneToExternalRental) {
-          const cloneAciklama = sideEffects.finalAciklama
-            ? `${sideEffects.finalAciklama} | KLON`
-            : 'Dış kiralama kaydı için klon';
           cloneInserts.push({
             product_id: hareket.urunId,
             type: hareket.tip,
             quantity: hareket.miktar,
-            description: cloneAciklama,
+            description: hareket.aciklama || '',
             location_id: sideEffects.externalRentalLocationId,
             user_id: hareket.kullanici || null,
             created_at: createdAt,

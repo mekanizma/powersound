@@ -75,10 +75,16 @@ export const groupExternalRentalMovementsByProduct = <T extends MovementLocation
   }).sort((a, b) => compareMovementDateDesc(a.latestMovement, b.latestMovement));
 };
 
+export const cleanMovementDescription = (aciklama?: string): string => {
+  return String(aciklama || '')
+    .replace(/\s*\|\s*KLON\b/gi, '')
+    .replace(/^Dış kiralama kaydı için klon$/i, '')
+    .trim();
+};
+
 export const getExternalRentalFlowDirection = (movement: MovementFlowRow): 'Giriş' | 'Çıkış' => {
   const aciklama = String(movement.aciklama || '').toLowerCase();
   const isReturnToDepot =
-    aciklama.includes('klon') ||
     aciklama.includes('dış kiralamadan depoya iade') ||
     aciklama.includes('dis kiralamadan depoya iade');
 

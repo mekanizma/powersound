@@ -8,6 +8,7 @@ import { Urun } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import BarcodeScanner from '../components/BarcodeScanner';
 import {
+  cleanMovementDescription,
   filterMovementsForLocation,
   getExternalRentalFlowDirection,
   groupExternalRentalMovementsByProduct,
@@ -15,6 +16,11 @@ import {
   isExternalRentalLocationName,
   isHotelLocationName
 } from '../utils/movementLocationUtils';
+
+const formatMovementAciklama = (aciklama?: string) => {
+  const cleaned = cleanMovementDescription(aciklama);
+  return cleaned || '—';
+};
 
 const Hareketler = () => {
   const { hareketler, urunler, removeHareket, addHareket, addHareketler, updateHareket, removeHareketler } = useEnvanter();
@@ -653,7 +659,7 @@ const Hareketler = () => {
     }]);
     setBulkMovementType((movement.tip as 'Giriş' | 'Çıkış') || 'Çıkış');
     setBulkMovementLocation(String(movement.lokasyon || ''));
-    setBulkMovementDescription(String(movement.aciklama || ''));
+    setBulkMovementDescription(cleanMovementDescription(movement.aciklama));
     setIsProcessingBulk(false);
     setCurrentPage(1);
   };
@@ -704,7 +710,7 @@ const Hareketler = () => {
     setEditMovementType(movement.tip as 'Giriş' | 'Çıkış');
     setEditMovementQuantity(movement.miktar);
     setEditMovementLocation(movement.lokasyon);
-    setEditMovementDescription(movement.aciklama);
+    setEditMovementDescription(cleanMovementDescription(movement.aciklama));
     setShowEditModal(true);
   };
 
@@ -985,7 +991,7 @@ const Hareketler = () => {
                 {!collapsedLocations[loc.id] && (
                   <div className="divide-y divide-gray-100">
                     {/* Kolon Başlıkları */}
-                    <div className="px-4 py-2 hidden md:grid md:grid-cols-8 gap-3 bg-gray-50 text-xs font-medium text-gray-500">
+                    <div className="px-4 py-2 hidden md:grid md:grid-cols-[minmax(7rem,0.9fr)_minmax(8rem,1.1fr)_minmax(4.5rem,0.7fr)_minmax(4rem,0.55fr)_minmax(5rem,0.75fr)_minmax(10rem,2.2fr)_minmax(5.5rem,0.9fr)_minmax(4.5rem,auto)] gap-3 bg-gray-50 text-xs font-medium text-gray-500">
                       <div>Tarih</div>
                       <div>Ürün</div>
                       <div>Tip</div>
@@ -1024,7 +1030,7 @@ const Hareketler = () => {
                           const isOrphan = !isValidProductName(urunAdi);
 
                           return (
-                            <div key={`external-rental-${group.urunId}`} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
+                            <div key={`external-rental-${group.urunId}`} className="px-4 py-3 grid grid-cols-1 md:grid md:grid-cols-[minmax(7rem,0.9fr)_minmax(8rem,1.1fr)_minmax(4.5rem,0.7fr)_minmax(4rem,0.55fr)_minmax(5rem,0.75fr)_minmax(10rem,2.2fr)_minmax(5.5rem,0.9fr)_minmax(4.5rem,auto)] gap-3 items-start hover:bg-gray-50">
                               <div className="text-sm text-gray-700 space-y-1">
                                 {group.cikisMovement && (
                                   <div>Çıkış: {formatDateTime(group.cikisMovement.tarih)}</div>
@@ -1046,9 +1052,12 @@ const Hareketler = () => {
                               </div>
                               <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
                               <div className="text-sm text-gray-700">{getUrunBarkod(group.urunId)}</div>
-                              <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                              <div className="text-xs md:text-sm text-gray-600 whitespace-normal break-words leading-relaxed min-w-0">
+                                <span className="md:hidden font-medium text-gray-500">Açıklama: </span>
+                                {formatMovementAciklama(hareket.aciklama)}
+                              </div>
                               <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
-                              <div className="flex items-center justify-between md:justify-end gap-3">
+                              <div className="flex items-center justify-between md:justify-end gap-3 md:pt-0.5">
                                 <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
                                   <input
                                     type="checkbox"
@@ -1083,7 +1092,7 @@ const Hareketler = () => {
                         const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
                         const isOrphan = !isValidProductName(urunAdi);
                         return (
-                          <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid-cols-8 gap-3 items-center hover:bg-gray-50">
+                          <div key={hareket.id} className="px-4 py-3 grid grid-cols-1 md:grid md:grid-cols-[minmax(7rem,0.9fr)_minmax(8rem,1.1fr)_minmax(4.5rem,0.7fr)_minmax(4rem,0.55fr)_minmax(5rem,0.75fr)_minmax(10rem,2.2fr)_minmax(5.5rem,0.9fr)_minmax(4.5rem,auto)] gap-3 items-start hover:bg-gray-50">
                             <div className="text-sm text-gray-700">{formatDateTime(hareket.tarih)}</div>
                             <div className="text-sm font-medium text-gray-900 truncate">
                               {displayName}
@@ -1098,9 +1107,12 @@ const Hareketler = () => {
                             </div>
                             <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
                             <div className="text-sm text-gray-700">{getUrunBarkod(hareket.urunId)}</div>
-                            <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
+                            <div className="text-xs md:text-sm text-gray-600 whitespace-normal break-words leading-relaxed min-w-0">
+                              <span className="md:hidden font-medium text-gray-500">Açıklama: </span>
+                              {formatMovementAciklama(hareket.aciklama)}
+                            </div>
                             <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
-                            <div className="flex items-center justify-between md:justify-end gap-3">
+                            <div className="flex items-center justify-between md:justify-end gap-3 md:pt-0.5">
                               <label className="inline-flex items-center gap-2 md:hidden text-xs text-gray-500">
                                 <input
                                   type="checkbox"
@@ -1181,7 +1193,7 @@ const Hareketler = () => {
               'Tip': hareket.tip,
               'Miktar': hareket.miktar,
               'Lokasyon': getLocationName(hareket.lokasyon),
-              'Açıklama': hareket.aciklama,
+              'Açıklama': cleanMovementDescription(hareket.aciklama),
               'İşlemi Yapan': getUserName(hareket.kullanici)
             })),
             'Hareketler'
@@ -1196,7 +1208,7 @@ const Hareketler = () => {
       {/* Lokasyon Geçmiş Kayıtlar Modalı (Dış Kiralama / Servis) */}
       {historyModalLocation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">
                 {historyModalLocation.name} - Geçmiş Kayıtlar
@@ -1223,63 +1235,95 @@ const Hareketler = () => {
                   );
                 }
 
+                const isExternalRentalHistory = isExternalRentalLocationName(historyModalLocation.name);
+                const historyGroups = isExternalRentalHistory
+                  ? groupExternalRentalMovementsByProduct(historyMovements)
+                  : historyMovements.map(hareket => ({
+                      urunId: hareket.urunId,
+                      movements: [hareket],
+                      hasGiris: hareket.tip === 'Giriş',
+                      hasCikis: hareket.tip === 'Çıkış',
+                      girisMovement: hareket.tip === 'Giriş' ? hareket : undefined,
+                      cikisMovement: hareket.tip === 'Çıkış' ? hareket : undefined,
+                      latestMovement: hareket
+                    }));
+
                 return (
-                  <div className="divide-y divide-gray-100">
-                    <div className="px-4 py-2 hidden md:grid md:grid-cols-7 gap-3 bg-gray-50 text-xs font-medium text-gray-500 sticky top-0">
-                      <div>Tarih</div>
-                      <div>Ürün</div>
-                      <div>Tip</div>
-                      <div>Miktar</div>
-                      <div>Barkod</div>
-                      <div>Açıklama</div>
-                      <div>İşlemi Yapan</div>
-                    </div>
-                    {(isExternalRentalLocationName(historyModalLocation.name)
-                      ? groupExternalRentalMovementsByProduct(historyMovements)
-                      : historyMovements.map(hareket => ({
-                          urunId: hareket.urunId,
-                          movements: [hareket],
-                          hasGiris: hareket.tip === 'Giriş',
-                          hasCikis: hareket.tip === 'Çıkış',
-                          girisMovement: hareket.tip === 'Giriş' ? hareket : undefined,
-                          cikisMovement: hareket.tip === 'Çıkış' ? hareket : undefined,
-                          latestMovement: hareket
-                        }))
-                    ).map(group => {
+                  <div className="divide-y divide-gray-100 p-2 space-y-2">
+                    {historyGroups.map(group => {
                       const hareket = group.latestMovement;
                       const urunAdi = hareket.urunAdi || getUrunAdi(group.urunId) || '';
                       const displayName = isValidProductName(urunAdi) ? urunAdi : 'Bilinmeyen Ürün';
                       const isOrphan = !isValidProductName(urunAdi);
+                      const aciklama = formatMovementAciklama(hareket.aciklama);
+
                       return (
                         <div
-                          key={`history-${group.urunId}`}
-                          className="px-4 py-3 grid grid-cols-1 md:grid-cols-7 gap-3 items-center hover:bg-gray-50"
+                          key={`history-${group.urunId}-${hareket.id}`}
+                          className="rounded-lg border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-colors"
                         >
-                          <div className="text-sm text-gray-700 space-y-1">
-                            {group.cikisMovement && (
-                              <div>Çıkış: {formatDateTime(group.cikisMovement.tarih)}</div>
-                            )}
-                            {group.girisMovement && (
-                              <div>Giriş: {formatDateTime(group.girisMovement.tarih)}</div>
-                            )}
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-gray-900 break-words">
+                                {displayName}
+                              </p>
+                              {isOrphan && (
+                                <p className="mt-1 text-xs text-red-600 font-mono break-all">
+                                  ID: {group.urunId}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex-shrink-0">
+                              {isExternalRentalHistory
+                                ? renderExternalRentalTypeBadges(group.hasGiris, group.hasCikis)
+                                : renderMovementTypeCell(hareket, historyModalLocation.name)}
+                            </div>
                           </div>
-                          <div className="text-sm font-medium text-gray-900 truncate">
-                            {displayName}
-                            {isOrphan && (
-                              <div className="text-xs text-red-600 mt-1 font-mono">
-                                ID: {group.urunId.substring(0, 12)}...
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            {isExternalRentalHistory ? (
+                              <>
+                                {group.cikisMovement && (
+                                  <div>
+                                    <span className="text-gray-500">Çıkış Tarihi: </span>
+                                    <span className="text-gray-800">{formatDateTime(group.cikisMovement.tarih)}</span>
+                                  </div>
+                                )}
+                                {group.girisMovement && (
+                                  <div>
+                                    <span className="text-gray-500">Giriş Tarihi: </span>
+                                    <span className="text-gray-800">{formatDateTime(group.girisMovement.tarih)}</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div>
+                                <span className="text-gray-500">Tarih: </span>
+                                <span className="text-gray-800">{formatDateTime(hareket.tarih)}</span>
                               </div>
                             )}
+                            <div>
+                              <span className="text-gray-500">Miktar: </span>
+                              <span className="text-gray-800">{hareket.miktar} adet</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Barkod: </span>
+                              <span className="text-gray-800 break-all">{getUrunBarkod(group.urunId)}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">İşlemi Yapan: </span>
+                              <span className="text-gray-800">{getUserName(hareket.kullanici)}</span>
+                            </div>
                           </div>
-                          <div>
-                            {isExternalRentalLocationName(historyModalLocation.name)
-                              ? renderExternalRentalTypeBadges(group.hasGiris, group.hasCikis)
-                              : renderMovementTypeCell(hareket, historyModalLocation.name)}
-                          </div>
-                          <div className="text-sm text-gray-900">{hareket.miktar} adet</div>
-                          <div className="text-sm text-gray-700">{getUrunBarkod(group.urunId)}</div>
-                          <div className="text-xs md:text-sm text-gray-500 truncate">{hareket.aciklama}</div>
-                          <div className="text-xs md:text-sm text-gray-500">{getUserName(hareket.kullanici)}</div>
+
+                          {aciklama !== '—' && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <p className="text-xs font-medium text-gray-500 mb-1">Açıklama</p>
+                              <p className="text-sm text-gray-700 whitespace-normal break-words leading-relaxed">
+                                {aciklama}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1453,9 +1497,9 @@ const Hareketler = () => {
                                   {h.miktar} adet
                                 </span>
                               </div>
-                              {h.aciklama && (
-                                <div className="text-[10px] text-gray-500 truncate sm:max-w-[60%]">
-                                  {h.aciklama}
+                              {cleanMovementDescription(h.aciklama) && (
+                                <div className="text-[10px] text-gray-500 whitespace-normal break-words leading-relaxed mt-1">
+                                  {cleanMovementDescription(h.aciklama)}
                                 </div>
                               )}
                             </div>
