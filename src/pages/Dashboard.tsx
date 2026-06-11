@@ -10,7 +10,6 @@ const Dashboard = () => {
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -24,12 +23,7 @@ const Dashboard = () => {
         .from('locations')
         .select('id, name');
       if (error) return;
-      const normalized = (locationsData || []).map(loc => {
-        const lower = (loc.name || '').trim().toLowerCase();
-        const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
-        return { ...loc, name };
-      });
-      setLocations(normalized);
+      setLocations(locationsData || []);
     };
     fetchLocations();
   }, []);

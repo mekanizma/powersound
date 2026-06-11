@@ -356,6 +356,17 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return normalized.includes('depo');
   };
 
+  const isHotelLocationName = (name: string): boolean => {
+    const normalized = String(name || '').trim().toLowerCase();
+    return (
+      normalized === 'kaya palazzo' ||
+      normalized === 'kaya artemis' ||
+      normalized === 'lords palace' ||
+      normalized === 'lord place' ||
+      normalized === 'les ambassadeurs'
+    );
+  };
+
   const updateHareket = async (id: string, updatedHareket: Partial<Hareket>) => {
     try {
       const eskiHareket = hareketler.find(h => h.id === id);
@@ -465,15 +476,36 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const hareketKayitLokasyonu = hareket.lokasyon;
       let shouldCloneToExternalRental = false;
       let externalRentalLocationId = '';
+      let isDepoSecimi = false;
+      let hotelLocationIdToClear = '';
 
       // Kural: Dış Kiralama'dan Depo'ya girişte asıl kayıt Depo'ya yazılır,
       // ayrıca Dış Kiralama klasöründe görünmesi için klon kayıt eklenir.
       if (urun && hareket.tip === 'Giriş' && hareket.lokasyon) {
         const secilenLokasyonAdi = await getLocationNameById(hareket.lokasyon);
         const urununMevcutLokasyonAdi = await getLocationNameById(urun.location_id);
-        const isDepoSecimi = isDepotLocationName(secilenLokasyonAdi);
+        isDepoSecimi = isDepotLocationName(secilenLokasyonAdi);
 
         if (isDepoSecimi) {
+          if (isHotelLocationName(urununMevcutLokasyonAdi)) {
+            hotelLocationIdToClear = String(urun.location_id);
+          } else if (!hotelLocationIdToClear) {
+            const { data: lastMovement } = await supabase
+              .from('movements')
+              .select('location_id, created_at')
+              .eq('product_id', hareket.urunId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (lastMovement?.location_id) {
+              const sonHareketLokasyonAdi = await getLocationNameById(String(lastMovement.location_id));
+              if (isHotelLocationName(sonHareketLokasyonAdi)) {
+                hotelLocationIdToClear = String(lastMovement.location_id);
+              }
+            }
+          }
+
           if (isExternalRentalLocationName(urununMevcutLokasyonAdi)) {
             shouldCloneToExternalRental = true;
             externalRentalLocationId = urun.location_id;
@@ -560,6 +592,19 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (cloneError) {
           console.error('Klon hareket ekleme hatası:', cloneError);
+        }
+      }
+
+      // Kural: Otel lokasyonlarından depoya iade edilince otel sekmesindeki kayıtlar silinir.
+      if (urun && hareket.tip === 'Giriş' && isDepoSecimi && hotelLocationIdToClear) {
+        const { error: hotelClearError } = await supabase
+          .from('movements')
+          .delete()
+          .eq('product_id', hareket.urunId)
+          .eq('location_id', hotelLocationIdToClear);
+
+        if (hotelClearError) {
+          console.error('Otel hareketleri silinirken hata:', hotelClearError);
         }
       }
 

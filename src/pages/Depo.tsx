@@ -14,13 +14,6 @@ const Depo = () => {
   const { urunler, kategoriler, loadProducts, removeUrun } = useEnvanter();
   // Sayfa açıldığında en güncel ürün listesini getir
   useEffect(() => {
-    // Lokasyon adlarını normalize et (Limak Deluxe -> Pasha)
-    const normalizeLocationName = (name: string) => {
-      const lower = (name || '').trim().toLowerCase();
-      if (lower === 'limak deluxe') return 'Pasha';
-      return name;
-    };
-
     const fetchLocations = async () => {
       try {
         const { data, error } = await supabase
@@ -28,12 +21,7 @@ const Depo = () => {
           .select('id, name')
           .order('name');
         if (error) throw error;
-        setLocations(
-          (data || []).map(loc => ({
-            ...loc,
-            name: normalizeLocationName(loc.name)
-          }))
-        );
+        setLocations(data || []);
       } catch (err) {
         console.error('Lokasyonlar yüklenirken hata:', err);
       }

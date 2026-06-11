@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, RefreshCw, BarChart3, ArrowRight, Clock, MapPin, PenTool as Tool, Warehouse } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { countMovementsForLocation } from '../utils/movementLocationUtils';
 
 const Anasayfa = () => {
   const { urunler, hareketler } = useEnvanter();
@@ -16,7 +17,6 @@ const Anasayfa = () => {
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -32,12 +32,7 @@ const Anasayfa = () => {
         .from('locations')
         .select('id, name');
       if (error) return;
-      const normalized = (locationsData || []).map(loc => {
-        const lower = (loc.name || '').trim().toLowerCase();
-        const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
-        return { ...loc, name };
-      });
-      setLocations(normalized);
+      setLocations(locationsData || []);
     };
 
     const fetchUsers = async () => {
@@ -52,17 +47,6 @@ const Anasayfa = () => {
     fetchUsers();
   }, [urunler, hareketler]);
 
-  // Lokasyonlara göre hareket sayıları
-  const hareketCountMap = useMemo(() => {
-    const map = new Map<string, number>();
-    hareketler.forEach((hareket) => {
-      const key = String(hareket.lokasyon || '');
-      if (!key) return;
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return map;
-  }, [hareketler]);
-
   const toplamUrun = urunler.length;
   const getCountForLocation = (locName: string, locId: string) => {
     const resolvedId =
@@ -71,7 +55,11 @@ const Anasayfa = () => {
         (loc) => (loc.name || '').toLowerCase() === (locName || '').toLowerCase()
       )?.id ?? '');
     if (!resolvedId) return 0;
-    return hareketCountMap.get(String(resolvedId)) || 0;
+    const location = locations.find(loc => String(loc.id) === String(resolvedId)) || {
+      id: resolvedId,
+      name: locName
+    };
+    return countMovementsForLocation(hareketler, urunler, location);
   };
   const orderedLocations = desiredLocationsOrder
     .map(name => locations.find(l => (l.name || '').toLowerCase() === name.toLowerCase()) || { id: '', name })

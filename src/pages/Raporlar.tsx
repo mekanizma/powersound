@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BarChart3, Package, Warehouse, RefreshCw, Download, Filter, Calendar, Clock } from 'lucide-react';
 import { useEnvanter } from '../contexts/EnvanterContext';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { exportToExcel } from '../utils/excelUtils';
+import { countMovementsForLocation } from '../utils/movementLocationUtils';
 
 const Raporlar = () => {
   const { urunler, hareketler } = useEnvanter();
@@ -12,7 +13,6 @@ const Raporlar = () => {
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -34,12 +34,7 @@ const Raporlar = () => {
         .from('locations')
         .select('id, name');
       if (error) return;
-      const normalized = (locationsData || []).map(loc => {
-        const lower = (loc.name || '').trim().toLowerCase();
-        const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
-        return { ...loc, name };
-      });
-      setLocations(normalized);
+      setLocations(locationsData || []);
     };
     const fetchUsers = async () => {
       const { data: usersData, error: usersError } = await supabase
@@ -195,17 +190,6 @@ const Raporlar = () => {
     setSelectedLocation('');
   };
 
-  // Hareket sayıları (Anasayfa ile uyumlu)
-  const hareketCountMap = useMemo(() => {
-    const map = new Map<string, number>();
-    hareketler.forEach((hareket) => {
-      const key = String(hareket.lokasyon || '');
-      if (!key) return;
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return map;
-  }, [hareketler]);
-
   const getMovementCountForLocation = (locName: string, locId: string) => {
     const resolvedId =
       locId ||
@@ -213,7 +197,11 @@ const Raporlar = () => {
         (loc) => (loc.name || '').toLowerCase() === (locName || '').toLowerCase()
       )?.id ?? '');
     if (!resolvedId) return 0;
-    return hareketCountMap.get(String(resolvedId)) || 0;
+    const location = locations.find(loc => String(loc.id) === String(resolvedId)) || {
+      id: resolvedId,
+      name: locName
+    };
+    return countMovementsForLocation(hareketler, urunler, location);
   };
 
   // Toplam ürün sayısı (rapor çıktıları için korunuyor)

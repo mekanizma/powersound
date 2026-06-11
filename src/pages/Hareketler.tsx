@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { Urun } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import BarcodeScanner from '../components/BarcodeScanner';
+import { filterMovementsForLocation, isExcludedLocationName, isHotelLocationName } from '../utils/movementLocationUtils';
 
 const Hareketler = () => {
   const { hareketler, urunler, removeHareket, addHareket, updateHareket, removeHareketler } = useEnvanter();
@@ -18,6 +19,7 @@ const Hareketler = () => {
   const [sortBy] = useState('tarih');
   const [sortDir] = useState<'asc' | 'desc'>('desc');
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
+  const [excludedLocationIds, setExcludedLocationIds] = useState<Set<string>>(new Set());
   const [users, setUsers] = useState<{id: string, username: string}[]>([]);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -45,7 +47,6 @@ const Hareketler = () => {
   // Gösterilecek lokasyon sırası
   const desiredLocationsOrder = [
     'Depo',
-    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -89,13 +90,6 @@ const Hareketler = () => {
     }
   }, [hareketler, urunler]);
   
-  // Lokasyon adlarını normalize etmek için yardımcı
-  const normalizeLocationName = (name: string) => {
-    const lower = (name || '').trim().toLowerCase();
-    if (lower === 'limak deluxe') return 'Pasha';
-    return name;
-  };
-
   // Fetch locations and users from Supabase
   useEffect(() => {
     const fetchData = async () => {
@@ -108,11 +102,14 @@ const Hareketler = () => {
       if (locationsError) {
         console.error('Error fetching locations:', locationsError);
       } else if (locationsData) {
+        const excludedIds = new Set(
+          (locationsData || [])
+            .filter(loc => isExcludedLocationName(loc.name))
+            .map(loc => String(loc.id))
+        );
+        setExcludedLocationIds(excludedIds);
         setLocations(
-          (locationsData || []).map(loc => ({
-            ...loc,
-            name: normalizeLocationName(loc.name)
-          }))
+          (locationsData || []).filter(loc => !isExcludedLocationName(loc.name))
         );
       }
 
@@ -201,6 +198,8 @@ const Hareketler = () => {
   
   // Filtreleme
   const filteredHareketler = hareketler.filter((hareket) => {
+    if (excludedLocationIds.has(String(hareket.lokasyon))) return false;
+
     const urunAdi = hareket.urunAdi || getUrunAdi(hareket.urunId) || '';
     const urunBarkod = getUrunBarkod(hareket.urunId) || '';
     const normalizedSearch = searchTerm.toLowerCase();
@@ -279,7 +278,7 @@ const Hareketler = () => {
   ].filter((loc, index, self) => self.findIndex(l => String(l.id) === String(loc.id)) === index);
 
   const groupedMovements: Record<string, typeof latestMovements> = displayLocations.reduce((acc, loc) => {
-    const list = latestMovements.filter(h => String(h.lokasyon) === String(loc.id));
+    const list = filterMovementsForLocation(latestMovements, urunler, loc);
     acc[loc.id] = selectedLocation ? (String(loc.id) === String(selectedLocation) ? list : []) : list;
     return acc;
   }, {} as Record<string, typeof latestMovements>);
@@ -576,10 +575,15 @@ const Hareketler = () => {
       };
     });
 
+    const selectedLocationId = String(selectedMovementRows[0]?.lokasyon || '');
+    const selectedLocationName = getLocationName(selectedLocationId);
+    const depoLoc = locations.find(l => (l.name || '').toLowerCase() === 'depo');
+    const isFromHotel = isHotelLocationName(selectedLocationName);
+
     setShowBulkBarcodeModal(true);
     setScannedBarcodes(scannedFromSelection);
-    setBulkMovementType('Çıkış');
-    setBulkMovementLocation(String(selectedMovementRows[0]?.lokasyon || ''));
+    setBulkMovementType(isFromHotel ? 'Giriş' : 'Çıkış');
+    setBulkMovementLocation(isFromHotel && depoLoc ? String(depoLoc.id) : selectedLocationId);
     setBulkMovementDescription('');
     setIsProcessingBulk(false);
     setCurrentPage(1);

@@ -12,7 +12,6 @@ const HareketEkle = () => {
   const [locations, setLocations] = useState<{id: string, name: string}[]>([]);
   const desiredLocationsOrder = [
     'Depo',
-    'Pasha',
     'Kaya Artemis',
     'Kaya Palazzo',
     'Les Ambassadeurs',
@@ -39,12 +38,7 @@ const HareketEkle = () => {
       if (error) {
         console.error('Lokasyon yükleme hatası:', error);
       } else {
-        const normalized = (data || []).map(loc => {
-          const lower = (loc.name || '').trim().toLowerCase();
-          const name = lower === 'limak deluxe' ? 'Pasha' : loc.name;
-          return { ...loc, name };
-        });
-        setLocations(normalized);
+        setLocations(data || []);
       }
     };
 
