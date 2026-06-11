@@ -28,7 +28,7 @@ type SortableField = keyof Urun;
 const PAGE_SIZE = 10;
 
 const UrunListesi = () => {
-  const { urunler, kategoriler, removeUrun, addHareket } = useEnvanter();
+  const { urunler, kategoriler, removeUrun, addHareket, addHareketler } = useEnvanter();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
@@ -178,13 +178,12 @@ const UrunListesi = () => {
 
   const handleWarehouseMovementSubmit = async () => {
     try {
-      for (const productId of selectedProducts) {
-        const product = urunler.find(u => u.id === productId);
-        if (!product) continue;
-
-        await addHareket({
+      const hareketPayload = selectedProducts
+        .map(productId => urunler.find(u => u.id === productId))
+        .filter((product): product is NonNullable<typeof product> => Boolean(product))
+        .map(product => ({
           id: '',
-          urunId: productId,
+          urunId: product.id,
           urunAdi: product.ad,
           tip: movementType,
           miktar: movementQuantity,
@@ -192,8 +191,9 @@ const UrunListesi = () => {
           aciklama: movementDescription,
           lokasyon: movementLocation,
           kullanici: 'Admin'
-        });
-      }
+        }));
+
+      await addHareketler(hareketPayload);
 
       setShowWarehouseModal(false);
       setSelectedProducts([]);

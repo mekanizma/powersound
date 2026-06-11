@@ -45,6 +45,7 @@ interface EnvanterContextType {
   updateUrun: (id: string, updatedUrun: Partial<Urun>) => Promise<void>;
   removeUrun: (id: string) => Promise<void>;
   addHareket: (hareket: Hareket) => Promise<void>;
+  addHareketler: (hareketler: Hareket[]) => Promise<void>;
   updateHareket: (id: string, updatedHareket: Partial<Hareket>) => Promise<void>;
   removeHareket: (id: string) => Promise<void>;
   removeHareketler: (ids: string[]) => Promise<void>;
@@ -367,6 +368,130 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
   };
 
+  const loadLocationCache = async (): Promise<Map<string, string>> => {
+    const { data, error } = await supabase.from('locations').select('id, name');
+    if (error) throw new Error(`Lokasyonlar yüklenemedi: ${error.message}`);
+    const map = new Map<string, string>();
+    (data || []).forEach((loc: { id: string; name: string }) => {
+      map.set(String(loc.id), String(loc.name || '').trim().toLowerCase());
+    });
+    return map;
+  };
+
+  const getNameFromLocationCache = (cache: Map<string, string>, id: string) =>
+    cache.get(String(id)) || '';
+
+  const findLocationIdInCache = (
+    cache: Map<string, string>,
+    matcher: (name: string) => boolean
+  ): string => {
+    for (const [id, name] of cache.entries()) {
+      if (matcher(name)) return id;
+    }
+    return '';
+  };
+
+  const resolveProductLocationFromCache = (
+    movementType: string,
+    movementLocationId: string,
+    cache: Map<string, string>,
+    depoLocationId: string
+  ): string => {
+    const movementLocationName = getNameFromLocationCache(cache, movementLocationId);
+    if (movementType === 'Giriş' && isExternalRentalLocationName(movementLocationName)) {
+      return depoLocationId || movementLocationId;
+    }
+    return movementLocationId;
+  };
+
+  const getDurumFromLocationName = (locName: string): string => {
+    const normalized = locName.trim().toLowerCase();
+    if (normalized === 'depo') return 'Depoda';
+    if (normalized === 'servis') return 'Serviste';
+    return locName || 'Depoda';
+  };
+
+  const buildLastMovementMaps = (existingHareketler: Hareket[]) => {
+    const lastTypeByProduct = new Map<string, string>();
+    const lastLocationByProduct = new Map<string, string>();
+    for (const h of existingHareketler) {
+      const pid = String(h.urunId);
+      if (!lastTypeByProduct.has(pid)) {
+        lastTypeByProduct.set(pid, h.tip);
+        lastLocationByProduct.set(pid, String(h.lokasyon));
+      }
+    }
+    return { lastTypeByProduct, lastLocationByProduct };
+  };
+
+  const computeHareketSideEffects = (
+    hareket: Hareket,
+    urun: Urun | undefined,
+    locationCache: Map<string, string>,
+    externalRentalFallbackId: string,
+    lastLocationByProduct: Map<string, string>
+  ) => {
+    const hareketKayitLokasyonu = hareket.lokasyon;
+    let shouldCloneToExternalRental = false;
+    let externalRentalLocationId = '';
+    let isDepoSecimi = false;
+    let hotelLocationIdToClear = '';
+    let finalAciklama = hareket.aciklama || '';
+
+    if (urun && hareket.tip === 'Giriş' && hareket.lokasyon) {
+      const secilenLokasyonAdi = getNameFromLocationCache(locationCache, hareket.lokasyon);
+      const urununMevcutLokasyonAdi = getNameFromLocationCache(locationCache, urun.location_id);
+      isDepoSecimi = isDepotLocationName(secilenLokasyonAdi);
+
+      if (isDepoSecimi) {
+        if (isHotelLocationName(urununMevcutLokasyonAdi)) {
+          hotelLocationIdToClear = String(urun.location_id);
+        } else {
+          const lastLocId = lastLocationByProduct.get(String(hareket.urunId));
+          if (lastLocId) {
+            const sonHareketLokasyonAdi = getNameFromLocationCache(locationCache, lastLocId);
+            if (isHotelLocationName(sonHareketLokasyonAdi)) {
+              hotelLocationIdToClear = lastLocId;
+            }
+          }
+        }
+
+        if (isExternalRentalLocationName(urununMevcutLokasyonAdi)) {
+          shouldCloneToExternalRental = true;
+          externalRentalLocationId = String(urun.location_id);
+        } else {
+          const lastLocId = lastLocationByProduct.get(String(hareket.urunId));
+          if (lastLocId) {
+            const sonHareketLokasyonAdi = getNameFromLocationCache(locationCache, lastLocId);
+            if (isExternalRentalLocationName(sonHareketLokasyonAdi)) {
+              shouldCloneToExternalRental = true;
+              externalRentalLocationId = lastLocId;
+            }
+          }
+        }
+
+        if (!externalRentalLocationId && externalRentalFallbackId) {
+          externalRentalLocationId = externalRentalFallbackId;
+        }
+      }
+    }
+
+    if (shouldCloneToExternalRental) {
+      finalAciklama = finalAciklama
+        ? `${finalAciklama} | Dış kiralamadan depoya iade`
+        : 'Dış kiralamadan depoya iade';
+    }
+
+    return {
+      finalAciklama,
+      shouldCloneToExternalRental,
+      externalRentalLocationId,
+      isDepoSecimi,
+      hotelLocationIdToClear,
+      hareketKayitLokasyonu,
+    };
+  };
+
   const updateHareket = async (id: string, updatedHareket: Partial<Hareket>) => {
     try {
       const eskiHareket = hareketler.find(h => h.id === id);
@@ -457,17 +582,22 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.log('Hareket ekleniyor:', hareket);
       // İş kuralı: Aynı üründe ardışık Çıkış yapılamaz. En son hareket Çıkış ise, yeni Çıkış reddedilir.
       if (hareket.tip === 'Çıkış') {
-        const { data: lastMovements, error: lastErr } = await supabase
-          .from('movements')
-          .select('type, created_at')
-          .eq('product_id', hareket.urunId)
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const lastInMemory = hareketler.find(h => String(h.urunId) === String(hareket.urunId));
+        const lastType = lastInMemory?.tip;
+        if (lastType === 'Çıkış') {
+          throw new Error('Bu ürün için en son işlem Çıkış. Tekrar çıkış yapamazsınız. Lütfen önce Giriş işlemi yapın.');
+        } else if (!lastInMemory) {
+          const { data: lastMovements, error: lastErr } = await supabase
+            .from('movements')
+            .select('type, created_at')
+            .eq('product_id', hareket.urunId)
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        if (!lastErr && lastMovements && lastMovements.length > 0) {
-          const lastType = lastMovements[0].type;
-          if (String(lastType) === 'Çıkış') {
-            throw new Error('Bu ürün için en son işlem Çıkış. Tekrar çıkış yapamazsınız. Lütfen önce Giriş işlemi yapın.');
+          if (!lastErr && lastMovements && lastMovements.length > 0) {
+            if (String(lastMovements[0].type) === 'Çıkış') {
+              throw new Error('Bu ürün için en son işlem Çıkış. Tekrar çıkış yapamazsınız. Lütfen önce Giriş işlemi yapın.');
+            }
           }
         }
       }
@@ -686,6 +816,175 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const addHareketler = async (items: Hareket[]) => {
+    if (items.length === 0) return;
+    if (items.length === 1) {
+      await addHareket(items[0]);
+      return;
+    }
+
+    try {
+      const locationCache = await loadLocationCache();
+      const depoLocationId = findLocationIdInCache(locationCache, (name) => name.includes('depo'));
+      const externalRentalFallbackId = findLocationIdInCache(locationCache, (name) => name.includes('kiralama'));
+
+      const { lastTypeByProduct, lastLocationByProduct } = buildLastMovementMaps(hareketler);
+      const urunMap = new Map(urunler.map(u => [String(u.id), { ...u }]));
+      const dirtyProductIds = new Set<string>();
+
+      type MovementInsert = {
+        product_id: string;
+        type: string;
+        quantity: number;
+        description: string;
+        location_id: string;
+        user_id: string | null;
+        created_at: string;
+      };
+
+      const mainInserts: MovementInsert[] = [];
+      const cloneInserts: MovementInsert[] = [];
+      const hotelClears = new Set<string>();
+
+      for (const hareket of items) {
+        const productId = String(hareket.urunId);
+
+        if (hareket.tip === 'Çıkış') {
+          const lastType = lastTypeByProduct.get(productId);
+          if (lastType === 'Çıkış') {
+            const urunAdi = hareket.urunAdi || urunMap.get(productId)?.ad || productId;
+            throw new Error(`${urunAdi}: En son işlem Çıkış. Tekrar çıkış yapılamaz.`);
+          }
+        }
+
+        const urun = urunMap.get(productId);
+        const sideEffects = computeHareketSideEffects(
+          hareket,
+          urun,
+          locationCache,
+          externalRentalFallbackId,
+          lastLocationByProduct
+        );
+
+        const createdAt = new Date().toISOString();
+        mainInserts.push({
+          product_id: hareket.urunId,
+          type: hareket.tip,
+          quantity: hareket.miktar,
+          description: sideEffects.finalAciklama,
+          location_id: sideEffects.hareketKayitLokasyonu,
+          user_id: hareket.kullanici || null,
+          created_at: createdAt,
+        });
+
+        const canCloneToExternalRental =
+          sideEffects.shouldCloneToExternalRental &&
+          Boolean(sideEffects.externalRentalLocationId) &&
+          String(sideEffects.externalRentalLocationId) !== String(hareket.lokasyon);
+
+        if (canCloneToExternalRental) {
+          const cloneAciklama = sideEffects.finalAciklama
+            ? `${sideEffects.finalAciklama} | KLON`
+            : 'Dış kiralama kaydı için klon';
+          cloneInserts.push({
+            product_id: hareket.urunId,
+            type: hareket.tip,
+            quantity: hareket.miktar,
+            description: cloneAciklama,
+            location_id: sideEffects.externalRentalLocationId,
+            user_id: hareket.kullanici || null,
+            created_at: createdAt,
+          });
+        }
+
+        if (urun && hareket.tip === 'Giriş' && sideEffects.isDepoSecimi && sideEffects.hotelLocationIdToClear) {
+          hotelClears.add(`${productId}:${sideEffects.hotelLocationIdToClear}`);
+        }
+
+        if (urun) {
+          const yeniMiktar = Math.max(
+            0,
+            urun.miktar + (hareket.tip === 'Giriş' ? hareket.miktar : -hareket.miktar)
+          );
+          const yeniUrunLokasyonu = resolveProductLocationFromCache(
+            hareket.tip,
+            hareket.lokasyon,
+            locationCache,
+            depoLocationId
+          );
+          const locName = getNameFromLocationCache(locationCache, yeniUrunLokasyonu);
+          const yeniDurum = getDurumFromLocationName(locName);
+
+          urunMap.set(productId, {
+            ...urun,
+            miktar: yeniMiktar,
+            location_id: yeniUrunLokasyonu,
+            lokasyon: yeniUrunLokasyonu,
+            durum: yeniDurum,
+          });
+          dirtyProductIds.add(productId);
+        }
+
+        lastTypeByProduct.set(productId, hareket.tip);
+        lastLocationByProduct.set(productId, sideEffects.hareketKayitLokasyonu);
+      }
+
+      const { error: insertError } = await supabase.from('movements').insert(mainInserts);
+      if (insertError) {
+        throw new Error(`Veritabanı hatası: ${insertError.message}`);
+      }
+
+      if (cloneInserts.length > 0) {
+        const { error: cloneError } = await supabase.from('movements').insert(cloneInserts);
+        if (cloneError) {
+          console.error('Klon hareket ekleme hatası:', cloneError);
+        }
+      }
+
+      if (hotelClears.size > 0) {
+        await Promise.all(
+          [...hotelClears].map((key) => {
+            const [productId, locationId] = key.split(':');
+            return supabase
+              .from('movements')
+              .delete()
+              .eq('product_id', productId)
+              .eq('location_id', locationId);
+          })
+        );
+      }
+
+      if (dirtyProductIds.size > 0) {
+        await Promise.all(
+          [...dirtyProductIds].map((productId) => {
+            const urun = urunMap.get(productId);
+            if (!urun) return Promise.resolve();
+            return supabase
+              .from('products')
+              .update({
+                quantity: urun.miktar,
+                status: urun.durum,
+                location_id: urun.location_id,
+              })
+              .eq('id', productId);
+          })
+        );
+
+        setUrunler(prev =>
+          prev.map(u => {
+            const updated = urunMap.get(String(u.id));
+            return updated || u;
+          })
+        );
+      }
+
+      await Promise.all([loadProducts(), loadMovements()]);
+    } catch (error) {
+      console.error('Toplu hareket ekleme hatası:', error);
+      throw error;
+    }
+  };
+
   const removeHareket = async (id: string) => {
     try {
       const hareket = hareketler.find(h => h.id === id);
@@ -844,6 +1143,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     updateUrun,
     removeUrun,
     addHareket,
+    addHareketler,
     updateHareket,
     removeHareket,
     removeHareketler,
@@ -851,7 +1151,7 @@ export const EnvanterProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     removeKategori,
     isAdmin,
     loadProducts
-  }), [urunler, hareketler, kategoriler, loading, error, addUrun, updateUrun, removeUrun, addHareket, updateHareket, removeHareket, removeHareketler, addKategori, removeKategori, isAdmin, loadProducts]);
+  }), [urunler, hareketler, kategoriler, loading, error, addUrun, updateUrun, removeUrun, addHareket, addHareketler, updateHareket, removeHareket, removeHareketler, addKategori, removeKategori, isAdmin, loadProducts]);
 
   return (
     <EnvanterContext.Provider value={value}>

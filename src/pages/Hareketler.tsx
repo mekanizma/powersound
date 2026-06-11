@@ -17,7 +17,7 @@ import {
 } from '../utils/movementLocationUtils';
 
 const Hareketler = () => {
-  const { hareketler, urunler, removeHareket, addHareket, updateHareket, removeHareketler } = useEnvanter();
+  const { hareketler, urunler, removeHareket, addHareket, addHareketler, updateHareket, removeHareketler } = useEnvanter();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
@@ -569,22 +569,22 @@ const Hareketler = () => {
     }
     
     try {
-      for (const item of validBarcodes) {
-        if (item.product) {
-          await addHareket({
-            id: '',
-            urunId: item.product.id,
-            urunAdi: item.product.ad,
-            tip: bulkMovementType,
-            miktar: item.quantity,
-            tarih: new Date().toLocaleDateString('tr-TR'),
-            aciklama: bulkMovementDescription,
-            lokasyon: bulkMovementLocation,
-            kullanici: user?.id || ''
-          });
-        }
-      }
-      
+      const hareketPayload = validBarcodes
+        .filter(item => item.product)
+        .map(item => ({
+          id: '',
+          urunId: item.product!.id,
+          urunAdi: item.product!.ad,
+          tip: bulkMovementType,
+          miktar: item.quantity,
+          tarih: new Date().toLocaleDateString('tr-TR'),
+          aciklama: bulkMovementDescription,
+          lokasyon: bulkMovementLocation,
+          kullanici: user?.id || ''
+        }));
+
+      await addHareketler(hareketPayload);
+
       closeBulkBarcodeModal();
       alert(`${validBarcodes.length} hareket başarıyla kaydedildi!`);
     } catch (error) {
